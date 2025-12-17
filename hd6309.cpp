@@ -7517,8 +7517,7 @@ void HD6309AssertInterupt(InterruptSource src, Interrupt interrupt)
 	assert(src >= IS_NMI && src < IS_MAX);
 	assert(interrupt >= INT_IRQ && interrupt <= INT_NMI);
 
-	InterruptLine[src] |= Bit(interrupt);
-	if (SyncWaiting || interrupt == INT_NMI)
+	if (SyncWaiting)
 		LatchInterrupts();
 	SyncWaiting = 0;
 

@@ -3348,7 +3348,7 @@ void MC6809AssertInterupt(InterruptSource src, Interrupt interrupt)
 	assert(interrupt >= INT_IRQ && interrupt <= INT_NMI);
 
 	InterruptLine[src] |= Bit(interrupt);
-	if (SyncWaiting || interrupt == INT_NMI)
+	if (SyncWaiting)
 		LatchInterrupts();
 	SyncWaiting = 0;
 
