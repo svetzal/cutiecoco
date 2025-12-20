@@ -148,6 +148,10 @@ bool IsShiftKeyDown();
 static void ProcessSelectDeviceCartridgeMenuItem(const vcc::utils::cartridge_catalog::item_type& catalog_item);
 static vcc::utils::cartridge_catalog::item_container_type cartridge_menu_catalog_items;
 static void LoadStartupCartridge();
+static [[nodiscard]] std::vector<vcc::utils::cartridge_catalog::item_type> UpdateCartridgeMenu(HMENU menu);
+static void UpdateControlMenu(HMENU menu);
+static void set_menu_item_text(HMENU menu, UINT id, std::string text, std::string hotkey);
+static void CALLBACK update_status(HWND, UINT, UINT_PTR, DWORD);
 
 //static CRITICAL_SECTION  FrameRender;
 /*--------------------------------------------------------------------------*/
@@ -276,123 +280,6 @@ void CloseApp()
 	SoundDeInit();
 	PakEjectCartridge(false);
 }
-
-void set_menu_item_text(HMENU menu, UINT id, std::string text, std::string hotkey)
-{
-	MENUITEMINFO item_info = {};
-
-	if (!hotkey.empty())
-	{
-		text += "\t" + hotkey;
-	}
-
-	item_info.cbSize = sizeof(item_info);
-	item_info.fMask = MIIM_STRING;
-	item_info.fType = MFT_STRING;
-
-	item_info.dwTypeData = text.data();
-	item_info.cch = text.size();
-
-	SetMenuItemInfo(menu, id, FALSE, &item_info);
-}
-
-void UpdateControlMenu(HMENU menu)
-{
-	set_menu_item_text(
-		menu,
-		ID_CONTROL_TOGGLE_PAUSE,
-		EmuState.Debugger.IsHalted() ? "Resume" : "Pause",
-		"F7");
-
-	set_menu_item_text(
-		menu,
-		ID_CONTROL_TOGGLE_DISPLAY_TYPE,
-		// FIXME-CHET: Magic number returned by setmonitortype should be enum
-		// FIXME-CHET: QUERY SHIT!
-		SetMonitorType(QUERY) == 0 ? "Switch to RGB Display" : "Switch to Composite Display",
-		"F6");
-
-	set_menu_item_text(
-		menu,
-		ID_CONTROL_TOGGLE_THROTTLE,
-		// FIXME-CHET: Magic number returned by setmonitortype should be enum
-		// FIXME-CHET: QUERY SHIT!
-		SetSpeedThrottle(QUERY) == 0 ? "Enable Speed Throttle" : "Disable Speed Throttle",
-		"F8");
-
-	// FIXME-CHET: We should probably just iterate all items and submenus and have
-	// a container that maps ids to update functions.
-	const auto overclock_menu(GetSubMenu(menu, GetMenuItemCount(menu) - 1));
-	if (overclock_menu != nullptr)
-	{
-		set_menu_item_text(
-			overclock_menu,
-			ID_CONTROL_TOGGLE_OVERCLOCK,
-			EmuState.OverclockFlag == false ? "Enable CPU Overclocking" : "Disable CPU Overclocking",
-			"Shift+F8");
-	}
-}
-
-[[nodiscard]] std::vector<vcc::utils::cartridge_catalog::item_type> UpdateCartridgeMenu(HMENU menu)
-{
-	while (GetMenuItemCount(menu) > 0)
-	{
-		RemoveMenu(menu, 0, MF_BYPOSITION);
-	}
-
-	::vcc::ui::menu::menu_builder builder;
-	builder.add_root_submenu("Cartridge Port");
-
-	builder.add_submenu_item(ID_INSERT_ROMPAK_CARTRIDGE - first_cartridge_menu_id, "Insert ROM Pak Catridge...");
-	//builder.add_submenu_item(ID_CARTRIDGE_INSERT_ROM - first_cartridge_menu_id, "Recently used ROM Paks", nullptr, true);
-	using item_type = vcc::utils::cartridge_catalog::item_type;
-
-	const auto catalog_items(cartridge_catalog_.copy_items_ordered());
-	
-	if (!catalog_items.empty())
-	{
-		builder.add_submenu_separator();
-
-		auto cartridgeSelectMenuItemId(first_select_cartridge_menu_id);
-		for(auto& item : catalog_items)
-		{
-			bool disabled = cartridge_catalog_.is_loaded(item.id);
-			// HACK: See above comment.
-			builder.add_submenu_item(
-				cartridgeSelectMenuItemId - first_cartridge_menu_id,
-				"Insert " + item.name,
-				{},
-				disabled);
-
-			++cartridgeSelectMenuItemId;
-		}
-	}
-
-	if (const auto& name(PakGetName()); !name.empty())
-	{
-		builder.add_submenu_separator();
-		// HACK: We subtract first_cartridge_menu_id from the id here because it gets 
-		// added to each of the id's in the item list to virtualize them. Since this
-		// id shouldn't be virtualized we hack it here to cheat,
-		builder.add_submenu_item(ID_EJECT_CARTRIDGE - first_cartridge_menu_id, "Eject " + name);
-	}
-
-
-	if (const auto& menu_items(PakGetMenuItems()); !menu_items.empty())
-	{
-		builder.add_root_separator();
-		builder.add_items(menu_items);
-	}
-	
-	menu_populator menu_item_visitor(menu, first_cartridge_menu_id);
-
-	builder
-		.release_items()
-		.accept(menu_item_visitor);
-
-	return catalog_items;
-}
-
 
 /*--------------------------------------------------------------------------*/
 // The Window Procedure
@@ -1125,28 +1012,6 @@ void SaveConfig() {
 	return;
 }
 
-void CALLBACK update_status(HWND, UINT, UINT_PTR, DWORD)
-{
-	GetModuleStatus(&EmuState);
-
-	char tstatus[128];
-	char tspeed[32];
-	snprintf(tspeed,sizeof(tspeed),"%2.2fMhz",EmuState.CPUCurrentSpeed);
-	// Append "+" to speed if overclocking is enabled
-	if (EmuState.OverclockFlag && (EmuState.DoubleSpeedMultiplyer>2))
-		strncat (tspeed,"+",sizeof(tspeed));
-	if (EmuState.Debugger.IsHalted()) {
-		snprintf(tstatus,sizeof(tstatus), " Paused - Hit F7 | %s @ %s | %s",
-				 CpuName,tspeed,EmuState.StatusLine);
-	} else {
-		snprintf(tstatus,sizeof(tstatus),"Skip:%2.2i | FPS:%3.0f | %s @ %s | %s",
-				 EmuState.FrameSkip,EmuState.FPS,CpuName,tspeed,EmuState.StatusLine);
-	}
-	int len = strlen(tstatus);
-	UpdateTapeStatus(tstatus + len, sizeof(tstatus) - len);
-	SetStatusBarText(tstatus,&EmuState);
-}
-
 unsigned __stdcall EmuLoop(HANDLE hEvent)
 {
 	static float FPS;
@@ -1369,4 +1234,143 @@ static void LoadStartupCartridge()
 		error_title,
 		MB_OK | MB_ICONERROR);
 	ClearStartupCartridge();
+}
+
+
+static void set_menu_item_text(HMENU menu, UINT id, std::string text, std::string hotkey)
+{
+	MENUITEMINFO item_info = {};
+
+	if (!hotkey.empty())
+	{
+		text += "\t" + hotkey;
+	}
+
+	item_info.cbSize = sizeof(item_info);
+	item_info.fMask = MIIM_STRING;
+	item_info.fType = MFT_STRING;
+
+	item_info.dwTypeData = text.data();
+	item_info.cch = text.size();
+
+	SetMenuItemInfo(menu, id, FALSE, &item_info);
+}
+
+static void UpdateControlMenu(HMENU menu)
+{
+	set_menu_item_text(
+		menu,
+		ID_CONTROL_TOGGLE_PAUSE,
+		EmuState.Debugger.IsHalted() ? "Resume" : "Pause",
+		"F7");
+
+	set_menu_item_text(
+		menu,
+		ID_CONTROL_TOGGLE_DISPLAY_TYPE,
+		// FIXME-CHET: Magic number returned by setmonitortype should be enum
+		// FIXME-CHET: QUERY SHIT!
+		SetMonitorType(QUERY) == 0 ? "Switch to RGB Display" : "Switch to Composite Display",
+		"F6");
+
+	set_menu_item_text(
+		menu,
+		ID_CONTROL_TOGGLE_THROTTLE,
+		// FIXME-CHET: Magic number returned by setmonitortype should be enum
+		// FIXME-CHET: QUERY SHIT!
+		SetSpeedThrottle(QUERY) == 0 ? "Enable Speed Throttle" : "Disable Speed Throttle",
+		"F8");
+
+	// FIXME-CHET: We should probably just iterate all items and submenus and have
+	// a container that maps ids to update functions.
+	const auto overclock_menu(GetSubMenu(menu, GetMenuItemCount(menu) - 1));
+	if (overclock_menu != nullptr)
+	{
+		set_menu_item_text(
+			overclock_menu,
+			ID_CONTROL_TOGGLE_OVERCLOCK,
+			EmuState.OverclockFlag == false ? "Enable CPU Overclocking" : "Disable CPU Overclocking",
+			"Shift+F8");
+	}
+}
+
+static [[nodiscard]] std::vector<vcc::utils::cartridge_catalog::item_type> UpdateCartridgeMenu(HMENU menu)
+{
+	while (GetMenuItemCount(menu) > 0)
+	{
+		RemoveMenu(menu, 0, MF_BYPOSITION);
+	}
+
+	::vcc::ui::menu::menu_builder builder;
+	builder.add_root_submenu("Cartridge Port");
+
+	builder.add_submenu_item(ID_INSERT_ROMPAK_CARTRIDGE - first_cartridge_menu_id, "Insert ROM Pak Catridge...");
+	//builder.add_submenu_item(ID_CARTRIDGE_INSERT_ROM - first_cartridge_menu_id, "Recently used ROM Paks", nullptr, true);
+	using item_type = vcc::utils::cartridge_catalog::item_type;
+
+	const auto catalog_items(cartridge_catalog_.copy_items_ordered());
+
+	if (!catalog_items.empty())
+	{
+		builder.add_submenu_separator();
+
+		auto cartridgeSelectMenuItemId(first_select_cartridge_menu_id);
+		for(auto& item : catalog_items)
+		{
+			bool disabled = cartridge_catalog_.is_loaded(item.id);
+			// HACK: See above comment.
+			builder.add_submenu_item(
+				cartridgeSelectMenuItemId - first_cartridge_menu_id,
+				"Insert " + item.name,
+				{},
+				disabled);
+
+			++cartridgeSelectMenuItemId;
+		}
+	}
+
+	if (const auto& name(PakGetName()); !name.empty())
+	{
+		builder.add_submenu_separator();
+		// HACK: We subtract first_cartridge_menu_id from the id here because it gets 
+		// added to each of the id's in the item list to virtualize them. Since this
+		// id shouldn't be virtualized we hack it here to cheat,
+		builder.add_submenu_item(ID_EJECT_CARTRIDGE - first_cartridge_menu_id, "Eject " + name);
+	}
+
+
+	if (const auto& menu_items(PakGetMenuItems()); !menu_items.empty())
+	{
+		builder.add_root_separator();
+		builder.add_items(menu_items);
+	}
+
+	menu_populator menu_item_visitor(menu, first_cartridge_menu_id);
+
+	builder
+		.release_items()
+		.accept(menu_item_visitor);
+
+	return catalog_items;
+}
+
+static void CALLBACK update_status(HWND, UINT, UINT_PTR, DWORD)
+{
+	GetModuleStatus(&EmuState);
+
+	char tstatus[128];
+	char tspeed[32];
+	snprintf(tspeed,sizeof(tspeed),"%2.2fMhz",EmuState.CPUCurrentSpeed);
+	// Append "+" to speed if overclocking is enabled
+	if (EmuState.OverclockFlag && (EmuState.DoubleSpeedMultiplyer>2))
+		strncat (tspeed,"+",sizeof(tspeed));
+	if (EmuState.Debugger.IsHalted()) {
+		snprintf(tstatus,sizeof(tstatus), " Paused - Hit F7 | %s @ %s | %s",
+				 CpuName,tspeed,EmuState.StatusLine);
+	} else {
+		snprintf(tstatus,sizeof(tstatus),"Skip:%2.2i | FPS:%3.0f | %s @ %s | %s",
+				 EmuState.FrameSkip,EmuState.FPS,CpuName,tspeed,EmuState.StatusLine);
+	}
+	int len = strlen(tstatus);
+	UpdateTapeStatus(tstatus + len, sizeof(tstatus) - len);
+	SetStatusBarText(tstatus,&EmuState);
 }
