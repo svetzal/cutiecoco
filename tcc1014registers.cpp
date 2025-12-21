@@ -164,29 +164,45 @@ void GimeWrite(unsigned char port,unsigned char data)
 
 unsigned char GimeRead(unsigned char port)
 {
-	// iobus sets port range 0x90 to 0xBF
-	auto data = 0;
+	unsigned char register_value(0u);
+
+	// Read from individual registers
 	switch (port)
 	{
 	case 0x92:
-		data=LastIrq;
-		LastIrq=0;
-		CPUDeAssertInterupt(IS_GIME, INT_IRQ);
-		return data;
+		// Read IRQ status register $FF92 and reset status of all interrupts.
+		std::swap(register_value, LastIrq);
+
+		return register_value;
+
 	case 0x93:
-		data=LastFirq;
-		LastFirq=0;
-		CPUDeAssertInterupt(IS_GIME, INT_FIRQ);
-		return data;
-	default:
-		if (port >= 0xA0) {
-			data = GimeRegisters[port];
-		    if (port >= 0xB0) data &= 0x3F;
-			return data;
-	    } else {
-			return 0x1B;
-		}
+		// Read FIRQ status register $FF93 and reset status of all interrupts.
+		std::swap(register_value, LastFirq);
+
+		return register_value;
 	}
+
+	// Read from register blocks
+	switch (port & 0xf0)
+	{
+	case 0xA0:
+		// Read MMU register from $FFAx
+		// TODO-CHET: Check if the upper two bits should be set always be set to something
+		// like the upper bits from the last value latched into the internal data buffer
+		// when only 512K is installed (i.e. no DAT board present).
+		return GimeRegisters[port];
+
+	case 0xB0:
+		// FIXME-CHET: The GIME returns the color value in lower 6 bits and the upper 2
+		// bit should probably be the same as the last byte latched into the internal
+		// data buffer.
+		return GimeRegisters[port];
+	}
+
+	// FIXME-CHET: Since the GIME does not have a value to return for non-existent and
+	// write only and registers, this should probably return the last byte latched into
+	// the internal data buffer.
+	return GimeRegisters[port];
 }
 
 void SetInit0(unsigned char data)
