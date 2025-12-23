@@ -133,7 +133,6 @@ extern char StickName[MAXSTICKS][STRLEN];
 
 static unsigned int TapeCounter=0;
 static unsigned char Tmode=STOP;
-unsigned char TapeFastLoad = 1;
 char Tmodes[4][10]={"STOP","PLAY","REC","STOP"};
 static int NumberOfSoundCards=0;
 
@@ -728,7 +727,6 @@ LRESULT CALLBACK TapeConfig(HWND hDlg, UINT message, WPARAM wParam, LPARAM /*lPa
 		SendDlgItemMessage(hDlg,IDC_TCOUNT,EM_SETCHARFORMAT ,SCF_ALL,(LPARAM)&CounterText);
 		SendDlgItemMessage(hDlg,IDC_MODE,EM_SETBKGNDCOLOR ,0,(LPARAM)RGB(0,0,0));
 		SendDlgItemMessage(hDlg,IDC_MODE,EM_SETCHARFORMAT ,SCF_ALL,(LPARAM)&CounterText);
-		SendDlgItemMessage(hDlg,IDC_FASTLOAD, BM_SETCHECK, TapeFastLoad, 0);
 		break;
 
 	case WM_COMMAND:
@@ -764,11 +762,7 @@ LRESULT CALLBACK TapeConfig(HWND hDlg, UINT message, WPARAM wParam, LPARAM /*lPa
 			break;
 		case IDC_TBROWSE:
 			LoadTape();
-			SendDlgItemMessage(hDlg, IDC_FASTLOAD, BM_SETCHECK, TapeFastLoad, 0);
 			SetTapeCounter(0, true);
-			break;
-		case IDC_FASTLOAD:
-			TapeFastLoad = (unsigned char)SendDlgItemMessage(hDlg, IDC_FASTLOAD, BM_GETCHECK, 0, 0);
 			break;
 		}
 		break;	//End WM_COMMAND

@@ -41,7 +41,6 @@ void GetTapeName(char *);
 void UpdateTapeStatus(char* status, int max);
 uint8_t CassInBitStream();
 
-extern unsigned char TapeFastLoad;
 unsigned int GetTapeRate();
 unsigned char GetMotorState();
 

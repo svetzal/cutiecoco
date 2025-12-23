@@ -164,29 +164,45 @@ void GimeWrite(unsigned char port,unsigned char data)
 
 unsigned char GimeRead(unsigned char port)
 {
-	// iobus sets port range 0x90 to 0xBF
-	auto data = 0;
+	unsigned char register_value(0u);
+
+	// Read from individual registers
 	switch (port)
 	{
 	case 0x92:
-		data=LastIrq;
-		LastIrq=0;
-		CPUDeAssertInterupt(IS_GIME, INT_IRQ);
-		return data;
+		// Read IRQ status register $FF92 and reset status of all interrupts.
+		std::swap(register_value, LastIrq);
+
+		return register_value;
+
 	case 0x93:
-		data=LastFirq;
-		LastFirq=0;
-		CPUDeAssertInterupt(IS_GIME, INT_FIRQ);
-		return data;
-	default:
-		if (port >= 0xA0) {
-			data = GimeRegisters[port];
-		    if (port >= 0xB0) data &= 0x3F;
-			return data;
-	    } else {
-			return 0x1B;
-		}
+		// Read FIRQ status register $FF93 and reset status of all interrupts.
+		std::swap(register_value, LastFirq);
+
+		return register_value;
 	}
+
+	// Read from register blocks
+	switch (port & 0xf0)
+	{
+	case 0xA0:
+		// Read MMU register from $FFAx
+		// TODO-CHET: Check if the upper two bits should be set always be set to something
+		// like the upper bits from the last value latched into the internal data buffer
+		// when only 512K is installed (i.e. no DAT board present).
+		return GimeRegisters[port];
+
+	case 0xB0:
+		// FIXME-CHET: The GIME returns the color value in lower 6 bits and the upper 2
+		// bit should probably be the same as the last byte latched into the internal
+		// data buffer.
+		return GimeRegisters[port];
+	}
+
+	// FIXME-CHET: Since the GIME does not have a value to return for non-existent and
+	// write only and registers, this should probably return the last byte latched into
+	// the internal data buffer.
+	return GimeRegisters[port];
 }
 
 void SetInit0(unsigned char data)
@@ -284,80 +300,67 @@ void SetTimerLSB() //95
 
 void GimeAssertKeyboardInterupt() 
 {
-	if ((GimeRegisters[0x93] & 2) && EnhancedFIRQFlag == 1)
+	if ( ((GimeRegisters[0x93] & 2)!=0) & (EnhancedFIRQFlag==1))
 	{
-		CPUAssertInterupt(IS_GIME, INT_FIRQ);
+		CPUAssertInterupt(FIRQ,0);
 		LastFirq = LastFirq | 2;
 	}
-	else if ((GimeRegisters[0x92] & 2) && EnhancedIRQFlag == 1)
+	else
+	if ( ((GimeRegisters[0x92] & 2)!=0) & (EnhancedIRQFlag==1))
 	{
-		CPUAssertInterupt(IS_GIME, INT_IRQ);
+		CPUAssertInterupt(IRQ,0);
 		LastIrq = LastIrq | 2;
 	}
+	return;
 }
 
 void GimeAssertVertInterupt()
 {
-	if ((GimeRegisters[0x93] & 8) && EnhancedFIRQFlag == 1)
+
+	if (((GimeRegisters[0x93] & 8)!=0) & (EnhancedFIRQFlag==1))
 	{
-		CPUAssertInterupt(IS_GIME, INT_FIRQ); //FIRQ
+		CPUAssertInterupt(FIRQ,0); //FIRQ
 		LastFirq = LastFirq | 8;
 	}
-	else if ((GimeRegisters[0x92] & 8) && EnhancedIRQFlag == 1)
+	else
+	if (((GimeRegisters[0x92] & 8)!=0) & (EnhancedIRQFlag==1))
 	{
-		CPUAssertInterupt(IS_GIME, INT_IRQ); //IRQ moon patrol demo using this
+		CPUAssertInterupt(IRQ,0); //IRQ moon patrol demo using this
 		LastIrq = LastIrq | 8;
 	}
+	return;
 }
 
 void GimeAssertHorzInterupt()
 {
-	if ((GimeRegisters[0x93] & 16) && EnhancedFIRQFlag == 1)
+
+	if (((GimeRegisters[0x93] & 16)!=0) & (EnhancedFIRQFlag==1))
 	{
-		CPUAssertInterupt(IS_GIME, INT_FIRQ);
+		CPUAssertInterupt(FIRQ,0);
 		LastFirq = LastFirq | 16;
 	}
-	else if ((GimeRegisters[0x92] & 16) && EnhancedIRQFlag == 1)
+	else
+	if (((GimeRegisters[0x92] & 16)!=0) & (EnhancedIRQFlag==1))
 	{
-		CPUAssertInterupt(IS_GIME, INT_IRQ);
+		CPUAssertInterupt(IRQ,0);
 		LastIrq = LastIrq | 16;
 	}
+	return;
 }
 
 // Timer [F]IRQ bit gets set even if interrupt is not enabled.
 // TODO: What about other gime interrupts? Are they simular?
 void GimeAssertTimerInterupt()
 {
-	if (GimeRegisters[0x93] & 32) 
-	{
+	if ((GimeRegisters[0x93] & 32)!=0) {
 		LastFirq = LastFirq | 32;
-		if (EnhancedFIRQFlag == 1) 
-			CPUAssertInterupt(IS_GIME, INT_FIRQ);
-	}
-	else if (GimeRegisters[0x92] & 32) 
-	{
+		if (EnhancedFIRQFlag == 1) CPUAssertInterupt(FIRQ,0);
+	} else
+	if ((GimeRegisters[0x92] & 32)!=0) {
 		LastIrq = LastIrq | 32;
-		if (EnhancedIRQFlag == 1) 
-			CPUAssertInterupt(IS_GIME, INT_IRQ);
+		if (EnhancedIRQFlag == 1) CPUAssertInterupt(IRQ,0);
 	}
 	return;
-}
-
-// CART
-void GimeAssertCartInterupt()
-{
-	if (GimeRegisters[0x93] & 1)
-	{
-		LastFirq = LastFirq | 1;
-		if (EnhancedFIRQFlag == 1)
-			CPUAssertInterupt(IS_GIME, INT_FIRQ);
-	}
-	else if (GimeRegisters[0x92] & 1)
-	{
-		LastIrq = LastIrq | 1;
-		if (EnhancedIRQFlag == 1)
-			CPUAssertInterupt(IS_GIME, INT_IRQ);
-	}
 }
 
 unsigned char sam_read(unsigned char port) //SAM don't talk much :)

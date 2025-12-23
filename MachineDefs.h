@@ -72,6 +72,11 @@ namespace VCC
 
 }
 
+// Common CPU defs
+#define IRQ		1
+#define FIRQ	2
+#define NMI		3
+
 // make nth bit 0-7
 constexpr uint8_t Bit(uint8_t n) { return 1 << n; }
 
@@ -81,8 +86,8 @@ constexpr uint8_t BitMask(uint8_t n) { return ~Bit(n); }
 extern void (*CPUInit)();
 extern int  (*CPUExec)(int);
 extern void (*CPUReset)();
-extern void (*CPUAssertInterupt)(InterruptSource, Interrupt);
-extern void (*CPUDeAssertInterupt)(InterruptSource, Interrupt);
+extern void (*CPUAssertInterupt)(unsigned char, unsigned char);
+extern void (*CPUDeAssertInterupt)(unsigned char);
 extern void (*CPUForcePC)(unsigned short);
 extern void (*CPUSetBreakpoints)(const std::vector<unsigned short>&);
 extern void (*CPUSetTraceTriggers)(const std::vector<unsigned short>&);

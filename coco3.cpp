@@ -680,43 +680,36 @@ void CassIn()
 	// convert 8 bit to 16 bit stereo (like dac)
 	auto monoToStereo = [](uint8_t sample) { return ((uint32_t)sample << 23) | ((uint32_t)sample << 7); };
 
-	if (TapeFastLoad)
+	// read next sample or same as last if motor is off
+	auto casSample =  CassInByteStream();
+	SetCassetteSample(casSample);
+
+	// mix two channels dependant on mux (2 x 16bit)
+	auto casChannel = monoToStereo(casSample);
+	auto dacChannel = GetDACSample();
+
+	// fade time of 125ms, note: this is slow enough to eliminate switching pop but
+	// it must be quick too because some games have a nasty habit of toggling the 
+	// mux on and off, such as Tuts Tomb.
+	const int FADE_TIME = SoundRate / 8;
+
+	// update ramp, always moving towards correct channel  
+	fade = fade < fadeTo ? fade + 1 : fade > fadeTo ? fade - 1 : fade;
+
+	// if mux changed, start transition
+	fadeTo = FADE_TIME * (GetMuxState() == PIA_MUX_CASSETTE ? 1 : 0);
+
+	// mix audio level between device channels
+	auto left = (getLeft(casChannel) * fade + getLeft(dacChannel) * (FADE_TIME - fade)) / FADE_TIME;
+	auto right = (getRight(casChannel) * fade + getRight(dacChannel) * (FADE_TIME - fade)) / FADE_TIME;
+	auto sample = (unsigned int)(left + (right << 16));
+
+	while (NanosToAudioSample > 0)
 	{
-		AudioBuffer[AudioIndex++] = GetMuxState() == PIA_MUX_CASSETTE ? monoToStereo(CAS_SILENCE) : GetDACSample();
+		AudioBuffer[AudioIndex++] = sample;
+		NanosToAudioSample -= NANOSECOND / AUDIO_RATE;
 	}
-	else
-	{
-		// read next sample or same as last if motor is off
-		auto casSample =  CassInByteStream();
-		SetCassetteSample(casSample);
-
-		// mix two channels dependant on mux (2 x 16bit)
-		auto casChannel = monoToStereo(casSample);
-		auto dacChannel = GetDACSample();
-
-		// fade time of 125ms, note: this is slow enough to eliminate switching pop but
-		// it must be quick too because some games have a nasty habit of toggling the 
-		// mux on and off, such as Tuts Tomb.
-		const int FADE_TIME = SoundRate / 8;
-
-		// update ramp, always moving towards correct channel  
-		fade = fade < fadeTo ? fade + 1 : fade > fadeTo ? fade - 1 : fade;
-
-		// if mux changed, start transition
-		fadeTo = FADE_TIME * (GetMuxState() == PIA_MUX_CASSETTE ? 1 : 0);
-
-		// mix audio level between device channels
-		auto left = (getLeft(casChannel) * fade + getLeft(dacChannel) * (FADE_TIME - fade)) / FADE_TIME;
-		auto right = (getRight(casChannel) * fade + getRight(dacChannel) * (FADE_TIME - fade)) / FADE_TIME;
-		auto sample = (unsigned int)(left + (right << 16));
-
-		while (NanosToAudioSample > 0)
-		{
-			AudioBuffer[AudioIndex++] = sample;
-			NanosToAudioSample -= NANOSECOND / AUDIO_RATE;
-		}
-		NanosToAudioSample += SoundInterupt;
-	}
+	NanosToAudioSample += SoundInterupt;
 }
 
 

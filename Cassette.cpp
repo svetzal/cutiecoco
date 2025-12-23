@@ -467,8 +467,6 @@ unsigned int LoadTape()
 	dlg.getdir(CassPath);
 	if (strcmp(CassPath, "") != 0)
 		WritePrivateProfileString("DefaultPaths","CassPath",CassPath,IniFilePath);
-	// turn off fast load for wav files
-	if (FileType == WAV) TapeFastLoad = false;
 	TapeWritten = false;
 	return 1;
 }
@@ -566,32 +564,18 @@ void CastoWav(unsigned char *Buffer,unsigned int BytestoConvert)
 	while (TempIndex < BytestoConvert && TapeOffset < TotalSize)
 	{
 		Byte=CasBuffer[(TapeOffset++)%TotalSize];
-		if (TapeFastLoad)
+
+		for (Mask = 0; Mask <= 7; Mask++)
 		{
-			for (Mask = 0; Mask <= 7; ++Mask, Byte >>= 1)
+			if ((Byte & (1 << Mask)) == 0)
 			{
-				// color basic expects high/low transitions so this
-				// is the smallest waveform that we can have without 
-				// hacking the rom. CA
-				// high/low waveform (b1) + tape bit (b0)
-				TempBuffer[TempIndex++] = 2 + (Byte & 1);
-				TempBuffer[TempIndex++] = 0 + (Byte & 1);
+				memcpy(&TempBuffer[TempIndex], Zero, 40);
+				TempIndex += 40;
 			}
-		}
-		else
-		{
-			for (Mask = 0;Mask <= 7;Mask++)
+			else
 			{
-				if ((Byte & (1 << Mask)) == 0)
-				{
-					memcpy(&TempBuffer[TempIndex],Zero,40);
-					TempIndex+=40;
-				}
-				else
-				{
-					memcpy(&TempBuffer[TempIndex],One,21);
-					TempIndex+=21;
-				}
+				memcpy(&TempBuffer[TempIndex], One, 21);
+				TempIndex += 21;
 			}
 		}
 	}

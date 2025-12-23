@@ -386,7 +386,6 @@
 #define IDC_BTN_EXPORT                  2146
 #define IDC_EDIT_START                  2147
 #define IDC_EDIT_STOP                   2148
-#define IDC_FASTLOAD                    2151
 #define IDC_EDIT_RANGE_BEG              2152
 #define IDC_EDIT_RANGE_END              2153
 #define IDC_EDIT_RANGE_SEP              2154

@@ -134,7 +134,6 @@
   <ItemGroup>
     <ClInclude Include="audio.h" />
     <ClInclude Include="BuildConfig.h" />
-    <ClInclude Include="CpuCommon.h" />
     <ClInclude Include="DirectX.h" />
     <ClInclude Include="DisplayNull.h" />
     <ClInclude Include="IDisplay.h" />

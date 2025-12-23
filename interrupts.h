@@ -17,6 +17,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 #pragma once
 
+#if 0
 // Enumerations for interrupts and their sources
 
 // CPU interrupts (counting from 1 because legacy)
@@ -39,4 +40,4 @@ enum InterruptSource {
 	IS_GIME,
 	IS_MAX
 };
-
+#endif

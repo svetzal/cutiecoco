@@ -62,13 +62,14 @@ static unsigned int SyncWaiting=0;
 static unsigned int temp32;
 static unsigned short temp16;
 static unsigned char temp8;
-static unsigned char InterruptLine[IS_MAX] = { 0 };
-static VCC::DFF InterruptLatch;
+static unsigned char PendingInterupts=0;
+static unsigned char IRQWaiter=0;
 static unsigned char Source=0,Dest=0;
 static unsigned char postbyte=0;
 static short unsigned postword=0;
 static signed char *spostbyte=(signed char *)&postbyte;
 static signed short *spostword=(signed short *)&postword;
+static char InInterupt=0;
 static std::vector<unsigned short> CPUBreakpoints;
 static std::vector<unsigned short> CPUTraceTriggers;
 static int HaltedInsPending = 0;
@@ -85,8 +86,6 @@ static void cpu_nmi();
 static void Do_Opcode(int);
 static void P2_Opcode();
 static void P3_Opcode();
-
-#include "CpuCommon.h"
 
 //END Fuction Prototypes-----------------------------------
 void MC6809Init()
@@ -357,16 +356,19 @@ int MC6809Exec(int CycleFor)
 			HaltedInsPending = 0;
 			return(CycleFor - CycleCounter);
 		}
-
-		LatchInterrupts();
-
-		if (NMI())
-			cpu_nmi();
-		else if (FIRQ() && !cc[F])
-			cpu_firq();
-		else if (IRQ() && !cc[I])
-			cpu_irq();
-
+		// Do interrupts
+		if (PendingInterupts) {
+			if (PendingInterupts & 4)
+				cpu_nmi();
+			if (PendingInterupts & 2)
+				cpu_firq();
+			if (PendingInterupts & 1) {
+				if (IRQWaiter==0)	// This is needed to fix timing problems
+					cpu_irq();
+				else
+					IRQWaiter-=1;
+			}
+		}
 		// Wait for Sync
 		if (SyncWaiting==1)	// Note: Assert interrupt clears sync waiting
 			return 0;
@@ -1032,6 +1034,7 @@ void Do_Opcode(int CycleFor)
 	case RTI_I: //3B
 		set_cc_flags(MemRead8(s.Reg++));
 		CycleCounter+=6;
+		InInterupt=0;
 		if (cc[E])
 		{
 			A_REG=MemRead8(s.Reg++);
@@ -3134,6 +3137,7 @@ void P3_Opcode()
 
 	case BREAK: //113E
 		if (EmuState.Debugger.Break_Enabled()) {
+			PendingInterupts = 0;
 			EmuState.Debugger.Halt();
 		} else {
 			CycleCounter+=4;
@@ -3250,79 +3254,121 @@ void P3_Opcode()
 
 void cpu_firq()
 {
-	if (EmuState.Debugger.IsTracing())
-		EmuState.Debugger.TraceCaptureInterruptServicing(INT_FIRQ, CycleCounter, MC6809GetState());
 
-	cc[E] = false; // Turn E flag off
-	MemWrite8(pc.B.lsb, --s.Reg);
-	MemWrite8(pc.B.msb, --s.Reg);
-	MemWrite8(get_cc_flags(), --s.Reg);
-	cc[I] = true;
-	cc[F] = true;
-	pc.Reg = MemRead16(VFIRQ);
+	if (!cc[F])
+	{
+		if (EmuState.Debugger.IsTracing())
+		{
+			EmuState.Debugger.TraceCaptureInterruptServicing(FIRQ, CycleCounter, MC6809GetState());
+		}
 
-	CycleCounter += 15;			// 10 Cycles to respond, 5 cycles to stack and load PC.
+		InInterupt=1; //Flag to indicate FIRQ has been asserted
+		cc[E]=0; // Turn E flag off
+		MemWrite8( pc.B.lsb,--s.Reg);
+		MemWrite8( pc.B.msb,--s.Reg);
+		MemWrite8(get_cc_flags(),--s.Reg);
+		cc[I]=1;
+		cc[F]=1;
+		pc.Reg=MemRead16(VFIRQ);
 
-	if (EmuState.Debugger.IsTracing())
-		EmuState.Debugger.TraceCaptureInterruptExecuting(INT_FIRQ, CycleCounter, MC6809GetState());
+		CycleCounter += 15;			// 10 Cycles to respond, 5 cycles to stack and load PC.
+
+		if (EmuState.Debugger.IsTracing())
+		{
+			EmuState.Debugger.TraceCaptureInterruptExecuting(FIRQ, CycleCounter, MC6809GetState());
+		}
+
+	}
+	else
+	{
+		if (EmuState.Debugger.IsTracing())
+		{
+			EmuState.Debugger.TraceCaptureInterruptMasked(FIRQ, CycleCounter, MC6809GetState());
+		}
+	}
+	PendingInterupts=PendingInterupts & 253;
+	return;
 }
 
 void cpu_irq()
 {
-	if (EmuState.Debugger.IsTracing())
-		EmuState.Debugger.TraceCaptureInterruptServicing(INT_IRQ, CycleCounter, MC6809GetState());
+	if (InInterupt==1) //If FIRQ is running postpone the IRQ
+		return;
+	if ((!cc[I]) )
+	{
+		if (EmuState.Debugger.IsTracing())
+		{
+			EmuState.Debugger.TraceCaptureInterruptServicing(IRQ, CycleCounter, MC6809GetState());
+		}
 
-	cc[E] = true;
-	MemWrite8(pc.B.lsb, --s.Reg);
-	MemWrite8(pc.B.msb, --s.Reg);
-	MemWrite8(u.B.lsb, --s.Reg);
-	MemWrite8(u.B.msb, --s.Reg);
-	MemWrite8(y.B.lsb, --s.Reg);
-	MemWrite8(y.B.msb, --s.Reg);
-	MemWrite8(x.B.lsb, --s.Reg);
-	MemWrite8(x.B.msb, --s.Reg);
-	MemWrite8(dp.B.msb, --s.Reg);
-	MemWrite8(B_REG, --s.Reg);
-	MemWrite8(A_REG, --s.Reg);
-	MemWrite8(get_cc_flags(), --s.Reg);
+		cc[E]=1;
+		MemWrite8( pc.B.lsb,--s.Reg);
+		MemWrite8( pc.B.msb,--s.Reg);
+		MemWrite8( u.B.lsb,--s.Reg);
+		MemWrite8( u.B.msb,--s.Reg);
+		MemWrite8( y.B.lsb,--s.Reg);
+		MemWrite8( y.B.msb,--s.Reg);
+		MemWrite8( x.B.lsb,--s.Reg);
+		MemWrite8( x.B.msb,--s.Reg);
+		MemWrite8( dp.B.msb,--s.Reg);
+		MemWrite8(B_REG,--s.Reg);
+		MemWrite8(A_REG,--s.Reg);
+		MemWrite8(get_cc_flags(),--s.Reg);
 
-	pc.Reg = MemRead16(VIRQ);
-	cc[I] = true;
+		pc.Reg=MemRead16(VIRQ);
+		cc[I]=1;
 
-	CycleCounter += 24;			// 10 Cycles to respond, 14 cycles to stack and load PC.
+		CycleCounter += 24;			// 10 Cycles to respond, 14 cycles to stack and load PC.
 
-	if (EmuState.Debugger.IsTracing())
-		EmuState.Debugger.TraceCaptureInterruptExecuting(INT_IRQ, CycleCounter, MC6809GetState());
+		if (EmuState.Debugger.IsTracing())
+		{
+			EmuState.Debugger.TraceCaptureInterruptExecuting(IRQ, CycleCounter, MC6809GetState());
+		}
+	}
+	else
+	{
+		if (EmuState.Debugger.IsTracing())
+		{
+			EmuState.Debugger.TraceCaptureInterruptMasked(IRQ, CycleCounter, MC6809GetState());
+		}
+	}
+	PendingInterupts=PendingInterupts & 254;
+	return;
 }
 
 void cpu_nmi()
 {
 	if (EmuState.Debugger.IsTracing())
-		EmuState.Debugger.TraceCaptureInterruptServicing(INT_NMI, CycleCounter, MC6809GetState());
+	{
+		EmuState.Debugger.TraceCaptureInterruptServicing(NMI, CycleCounter, MC6809GetState());
+	}
 
-	cc[E] = true;
-	MemWrite8(pc.B.lsb, --s.Reg);
-	MemWrite8(pc.B.msb, --s.Reg);
-	MemWrite8(u.B.lsb, --s.Reg);
-	MemWrite8(u.B.msb, --s.Reg);
-	MemWrite8(y.B.lsb, --s.Reg);
-	MemWrite8(y.B.msb, --s.Reg);
-	MemWrite8(x.B.lsb, --s.Reg);
-	MemWrite8(x.B.msb, --s.Reg);
-	MemWrite8(dp.B.msb, --s.Reg);
-	MemWrite8(B_REG, --s.Reg);
-	MemWrite8(A_REG, --s.Reg);
-	MemWrite8(get_cc_flags(), --s.Reg);
-	cc[I] = true;
-	cc[F] = true;
-	pc.Reg = MemRead16(VNMI);
+	cc[E]=1;
+	MemWrite8( pc.B.lsb,--s.Reg);
+	MemWrite8( pc.B.msb,--s.Reg);
+	MemWrite8( u.B.lsb,--s.Reg);
+	MemWrite8( u.B.msb,--s.Reg);
+	MemWrite8( y.B.lsb,--s.Reg);
+	MemWrite8( y.B.msb,--s.Reg);
+	MemWrite8( x.B.lsb,--s.Reg);
+	MemWrite8( x.B.msb,--s.Reg);
+	MemWrite8( dp.B.msb,--s.Reg);
+	MemWrite8(B_REG,--s.Reg);
+	MemWrite8(A_REG,--s.Reg);
+	MemWrite8(get_cc_flags(),--s.Reg);
+	cc[I]=1;
+	cc[F]=1;
+	pc.Reg=MemRead16(VNMI);
 
 	CycleCounter += 24;			// 10 Cycles to respond, 14 cycles to stack and load PC.
 
 	if (EmuState.Debugger.IsTracing())
-		EmuState.Debugger.TraceCaptureInterruptExecuting(INT_NMI, CycleCounter, MC6809GetState());
+	{
+		EmuState.Debugger.TraceCaptureInterruptExecuting(NMI, CycleCounter, MC6809GetState());
+	}
 
-	ClearNMI();
+	PendingInterupts=PendingInterupts & 251;
+	return;
 }
 
 void set_cc_flags (unsigned char bincc)
@@ -3342,32 +3388,29 @@ unsigned char get_cc_flags()
 		return bincc;
 }
 
-void MC6809AssertInterupt(InterruptSource src, Interrupt interrupt)
+void MC6809AssertInterupt(unsigned char Interupt,unsigned char waiter)// 4 nmi 2 firq 1 irq
 {
-	assert(src >= IS_NMI && src < IS_MAX);
-	assert(interrupt >= INT_IRQ && interrupt <= INT_NMI);
-
-	InterruptLine[src] |= Bit(interrupt);
-	if (SyncWaiting || interrupt == INT_NMI)
-		LatchInterrupts();
-	SyncWaiting = 0;
-
+	SyncWaiting=0;
+	PendingInterupts=PendingInterupts | (1<<(Interupt-1));
+	IRQWaiter=waiter;
 	if (EmuState.Debugger.IsTracing())
-		EmuState.Debugger.TraceCaptureInterruptRequest(interrupt, CycleCounter, MC6809GetState());
+	{
+		EmuState.Debugger.TraceCaptureInterruptRequest(Interupt, CycleCounter, MC6809GetState());
+	}
+	return;
 }
 
-void MC6809DeAssertInterupt(InterruptSource src, Interrupt interrupt)
+void MC6809DeAssertInterupt(unsigned char Interupt)// 4 nmi 2 firq 1 irq
 {
-	assert(src >= IS_NMI && src < IS_MAX);
-	assert(interrupt >= INT_IRQ && interrupt <= INT_NMI);
-
-	InterruptLine[src] &= BitMask(interrupt);
+	PendingInterupts=PendingInterupts & ~(1<<(Interupt-1));
+	InInterupt=0;
+	return;
 }
 
 void MC6809ForcePC(unsigned short NewPC)
 {
-	ClearInterrupts();
 	pc.Reg=NewPC;
+	PendingInterupts=0;
 	SyncWaiting=0;
 	return;
 }
