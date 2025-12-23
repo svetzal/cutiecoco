@@ -394,7 +394,7 @@ namespace vcc::cartridges::fd502
 
 		case rom_image_id_type::microsoft:
 			// TODO-CHET: Check for errors
-			(void)rom_image->load(host_->system_rom_path().append("disk11.rom"));
+			(void)rom_image->load(host_->system_rom_path().append("rsdos.rom"));
 			break;
 
 		case rom_image_id_type::rgbdos:
