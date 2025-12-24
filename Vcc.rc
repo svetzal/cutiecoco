@@ -704,8 +704,8 @@ END
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 0,0,0,1
- PRODUCTVERSION 0,0,0,1
+ FILEVERSION 0,0,1,0
+ PRODUCTVERSION 0,0,1,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x29L
@@ -726,7 +726,7 @@ BEGIN
             VALUE "LegalCopyright", "Copyright 2015 by BitRot Software"
             VALUE "OriginalFilename", "dream.exe"
             VALUE "ProductName", "DREAM - The Tandy Color Computer 3 Emulator"
-            VALUE "FileVersion", "0.0.1.0"
+			VALUE "ProductVersion", "0.0.1.0"
         END
     END
     BLOCK "VarFileInfo"
