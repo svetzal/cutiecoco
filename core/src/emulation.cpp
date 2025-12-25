@@ -24,6 +24,7 @@ This file is part of DREAM-VCC.
 #include "hd6309.h"
 #include "tcc1014mmu.h"
 #include "tcc1014graphics.h"
+#include "tcc1014registers.h"
 #include "coco3.h"
 #include <cstring>
 
@@ -98,21 +99,22 @@ void EmulationThread::initializeEmulation()
     // Set up the global EmuState with our framebuffer
     EmuState.PTRsurface32 = m_framebuffer->pixels();
     EmuState.SurfacePitch = m_framebuffer->pitch();
-    EmuState.BitDepth = 32;
+    EmuState.BitDepth = 3;  // Index 3 = 32-bit mode (0=8, 1=16, 2=24, 3=32)
     EmuState.RamBuffer = memory;
     EmuState.EmulationRunning = 1;
     EmuState.WindowSize = VCC::Size(FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT);
+
+    // Initialize GIME/SAM (must be before CPU reset to set up ROM pointer)
+    GimeInit();
+    GimeReset();
+    mc6883_reset();  // Initialize SAM and ROM pointer
 
     // Initialize CPU (default to 6809)
     MC6809Init();
     MC6809Reset();
 
-    // Initialize GIME graphics
-    GimeInit();
-    GimeReset();
-
-    // Set up audio rate
-    SetAudioRate(44100);
+    // Disable audio for now (no audio backend implemented yet)
+    SetAudioRate(0);
 
     // Reset misc (timers, interrupts, etc.)
     MiscReset();

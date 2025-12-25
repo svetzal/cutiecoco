@@ -98,7 +98,11 @@
       "Bash(git commit:*)",
       "Bash(find:*)",
       "Bash(timeout 5 open:*)",
-      "Bash(bd stats:*)"
+      "Bash(bd stats:*)",
+      "Bash(./qt/dream-vcc.app/Contents/MacOS/dream-vcc:*)",
+      "Bash(timeout:*)",
+      "Bash(echo:*)",
+      "Bash(lldb:*)"
     ]
   }
 }
