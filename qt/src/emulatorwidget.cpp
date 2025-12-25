@@ -74,6 +74,7 @@ namespace {
 
     // Map Qt key codes to CoCo keys for non-printable keys
     // (arrows, function keys, modifiers, etc.)
+    // Returns the CoCo key, or std::nullopt if no mapping exists
     std::optional<dream::CocoKey> mapQtKeyToCoco(int qtKey)
     {
         using K = dream::CocoKey;
@@ -89,7 +90,12 @@ namespace {
             case Qt::Key_Return:
             case Qt::Key_Enter: return K::Enter;
             case Qt::Key_Shift: return K::Shift;
+#ifdef Q_OS_MACOS
+            // On macOS, physical Control key sends Qt::Key_Meta (due to Qt's swap)
+            case Qt::Key_Meta: return K::Ctrl;
+#else
             case Qt::Key_Control: return K::Ctrl;
+#endif
             case Qt::Key_Alt: return K::Alt;
             case Qt::Key_Escape: return K::Break;
             case Qt::Key_Backspace: return K::Left;  // Backspace acts as left arrow
@@ -100,6 +106,37 @@ namespace {
             case Qt::Key_F2: return K::F2;
 
             default: return std::nullopt;
+        }
+    }
+
+    // Check if a Qt key event should be ignored (system modifiers, etc.)
+    bool shouldIgnoreKeyEvent(const QKeyEvent* event)
+    {
+        int key = event->key();
+
+#ifdef Q_OS_MACOS
+        // On macOS, Qt swaps Control and Meta by default:
+        // - Physical Command key → Qt::Key_Control
+        // - Physical Control key → Qt::Key_Meta
+        // We want to ignore Command (used for macOS shortcuts)
+        // The physical Control key (Qt::Key_Meta) will map to CoCo Ctrl
+        if (key == Qt::Key_Control) {
+            return true;  // This is Command key on macOS - ignore it
+        }
+#endif
+
+        // Ignore other system modifiers that don't map to CoCo keys
+        switch (key) {
+            case Qt::Key_Super_L:
+            case Qt::Key_Super_R:
+            case Qt::Key_Hyper_L:
+            case Qt::Key_Hyper_R:
+            case Qt::Key_CapsLock:
+            case Qt::Key_NumLock:
+            case Qt::Key_ScrollLock:
+                return true;
+            default:
+                return false;
         }
     }
 }
@@ -320,6 +357,12 @@ void EmulatorWidget::keyPressEvent(QKeyEvent *event)
 
     auto& kb = dream::getKeyboard();
 
+    // Ignore system modifiers that don't map to CoCo keys (e.g., Command on macOS)
+    if (shouldIgnoreKeyEvent(event)) {
+        event->ignore();
+        return;
+    }
+
     // First, try non-printable key mapping (arrows, modifiers, function keys)
     auto cocoKey = mapQtKeyToCoco(event->key());
     if (cocoKey) {
@@ -362,6 +405,12 @@ void EmulatorWidget::keyReleaseEvent(QKeyEvent *event)
     }
 
     auto& kb = dream::getKeyboard();
+
+    // Ignore system modifiers that don't map to CoCo keys (e.g., Command on macOS)
+    if (shouldIgnoreKeyEvent(event)) {
+        event->ignore();
+        return;
+    }
 
     // First, try non-printable key mapping
     auto cocoKey = mapQtKeyToCoco(event->key());

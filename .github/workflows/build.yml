@@ -54,20 +54,26 @@ jobs:
       - name: Build
         run: cmake --build build --config ${{ env.BUILD_TYPE }}
 
-      # macOS: Bundle Qt frameworks into app
+      # macOS: Bundle Qt frameworks and ROM into app
       - name: Bundle Qt Frameworks (macOS)
         if: runner.os == 'macOS'
         run: |
+          APP_PATH="build/qt/cutiecoco.app"
+
           # macdeployqt bundles Qt frameworks into the app
-          macdeployqt build/qt/cutiecoco.app -verbose=2
+          macdeployqt "$APP_PATH" -verbose=2
 
           # Remove Headers and .prl files that can cause signing issues
-          APP_PATH="build/qt/cutiecoco.app"
           find "$APP_PATH/Contents/Frameworks" -name "Headers" -exec rm -rf {} + 2>/dev/null || true
           find "$APP_PATH/Contents/Frameworks" -name "*.prl" -delete
 
-          echo "Framework cleanup complete"
+          # Bundle the system ROM
+          mkdir -p "$APP_PATH/Contents/Resources/system-roms"
+          cp system-roms/coco3.rom "$APP_PATH/Contents/Resources/system-roms/"
+
+          echo "Framework and ROM bundling complete"
           ls -la "$APP_PATH/Contents/Frameworks/QtCore.framework/"
+          ls -la "$APP_PATH/Contents/Resources/system-roms/"
 
       # macOS Code Signing
       - name: Import Code Signing Certificate
@@ -171,11 +177,15 @@ jobs:
         run: |
           # Create AppDir structure
           mkdir -p AppDir/usr/bin
+          mkdir -p AppDir/usr/bin/system-roms
           mkdir -p AppDir/usr/share/applications
           mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
 
           # Copy executable
           cp build/qt/cutiecoco AppDir/usr/bin/
+
+          # Copy system ROM (next to executable)
+          cp system-roms/coco3.rom AppDir/usr/bin/system-roms/
 
           # Copy desktop file
           cp qt/cutiecoco.desktop AppDir/usr/share/applications/
@@ -201,7 +211,10 @@ jobs:
         run: |
           cd build/qt/Release
           mkdir package
+          mkdir package/system-roms
           copy cutiecoco.exe package/
+          # Copy system ROM
+          copy ../../../system-roms/coco3.rom package/system-roms/
           # Use windeployqt to bundle Qt DLLs
           windeployqt --release --no-translations package/cutiecoco.exe
           Compress-Archive -Path package/* -DestinationPath ../cutiecoco-windows.zip

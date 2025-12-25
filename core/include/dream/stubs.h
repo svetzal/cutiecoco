@@ -190,11 +190,25 @@ extern CPUExecFuncPtr CPUExec;
 // pakinterface stubs (was in pakinterface.cpp)
 // ============================================================================
 
+// Storage for the system ROM path (set by Qt on startup)
+inline std::filesystem::path& getSystemRomPathStorage() {
+    static std::filesystem::path path;
+    return path;
+}
+
+// Set the system ROM path (called by Qt app on startup)
+inline void SetSystemRomPath(const std::filesystem::path& path) {
+    getSystemRomPathStorage() = path;
+}
+
 // Get the path to system ROMs directory
-// TODO: Replace with proper Qt resource path resolution
+// This returns the path set by Qt, or falls back to current directory
 inline std::filesystem::path PakGetSystemRomPath() {
-    // Look for system-roms directory in current working directory
-    // This will be replaced with proper path resolution using Qt
+    const auto& path = getSystemRomPathStorage();
+    if (!path.empty()) {
+        return path;
+    }
+    // Fallback for development - look in current working directory
     return std::filesystem::current_path() / "system-roms";
 }
 
