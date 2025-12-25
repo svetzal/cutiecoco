@@ -380,6 +380,92 @@ Due to dependencies, integrate files in this order:
 | `no member named 'X' in 'CPUState'` | Missing field in types.h | Add to dream::CPUState |
 | `'__declspec' attributes not enabled` | Windows-only export macro | Check libcommon/include/vcc/detail/exports.h has platform guards |
 
+## Emulator Initialization
+
+**CRITICAL:** The emulator initialization order matters. Incorrect order causes crashes.
+
+### Required Initialization Sequence
+
+```cpp
+// 1. Initialize memory (allocates RAM, loads ROM)
+unsigned char* memory = MmuInit(_512K);  // _128K, _512K, or _2M
+
+// 2. Set up SystemState BEFORE any emulation
+EmuState.PTRsurface32 = framebuffer->pixels();
+EmuState.SurfacePitch = framebuffer->pitch();
+EmuState.BitDepth = 3;  // IMPORTANT: Index, not actual bits!
+EmuState.RamBuffer = memory;
+EmuState.EmulationRunning = 1;
+
+// 3. Initialize GIME/SAM BEFORE CPU (sets up ROM pointer)
+GimeInit();
+GimeReset();
+mc6883_reset();  // CRITICAL: Initializes ROM pointer for CPU reset
+
+// 4. NOW initialize CPU (reads reset vector from ROM)
+MC6809Init();
+MC6809Reset();
+
+// 5. Disable audio until backend is implemented
+SetAudioRate(0);  // Prevents buffer overflow crash
+
+// 6. Reset misc systems
+MiscReset();
+
+// 7. Set CPU execution pointer
+CPUExec = MC6809Exec;  // or HD6309Exec
+```
+
+### Common Initialization Pitfalls
+
+| Mistake | Symptom | Fix |
+|---------|---------|-----|
+| CPU reset before `mc6883_reset()` | Crash in `sam_read()` (null ROM pointer) | Call `mc6883_reset()` before `MC6809Reset()` |
+| `BitDepth = 32` instead of `3` | Crash calling null function pointer | Use index: 0=8bit, 1=16bit, 2=24bit, 3=32bit |
+| `SetAudioRate(44100)` without audio backend | Buffer overflow crash in `AudioOut()` | Use `SetAudioRate(0)` to disable |
+| Missing `MmuInit()` | Null pointer crashes everywhere | Always call first |
+
+### BitDepth Values
+
+The `SystemState.BitDepth` field is an **index into function pointer arrays**, not the actual bit depth:
+
+```cpp
+// These arrays are indexed by BitDepth:
+void (*UpdateScreen[4])(SystemState*) = {UpdateScreen8, UpdateScreen16, UpdateScreen24, UpdateScreen32};
+void (*DrawTopBoarder[4])(SystemState*) = {...};
+void (*DrawBottomBoarder[4])(SystemState*) = {...};
+
+// Correct values:
+// BitDepth = 0  →  8-bit rendering
+// BitDepth = 1  →  16-bit rendering
+// BitDepth = 2  →  24-bit rendering
+// BitDepth = 3  →  32-bit rendering (use this for Qt)
+```
+
+### ROM Loading
+
+The system ROM is loaded by `MmuInit()` → `LoadRom()`:
+
+- Default path: `PakGetSystemRomPath() / "coco3.rom"`
+- `PakGetSystemRomPath()` stub returns: `std::filesystem::current_path() / "system-roms"`
+- **Result:** ROM expected at `./system-roms/coco3.rom` relative to working directory
+
+For the Qt app running from `build/`:
+```bash
+mkdir -p build/system-roms
+cp coco3.rom build/system-roms/
+```
+
+### Audio System
+
+The audio system collects samples into a fixed-size buffer (`AudioBuffer[16384]`). Without a real audio backend:
+
+1. `FlushAudioBuffer()` stub does nothing
+2. `AudioIndex` keeps incrementing
+3. Eventually writes past buffer end → crash
+
+**Solution:** Call `SetAudioRate(0)` to disable audio collection until a Qt audio backend is implemented.
+
 ## Troubleshooting
 
 ### Build Fails After Adding File
