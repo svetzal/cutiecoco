@@ -75,6 +75,10 @@ bool QtAudioOutput::init(uint32_t sampleRate)
         return false;
     }
 
+    // Set up fade-in: ~100ms to avoid startup crackle
+    m_fadeInSamples = sampleRate / 10;  // 100ms worth of samples
+    m_samplesProcessed = 0;
+
     m_initialized = true;
     qDebug() << "QtAudioOutput: Initialized at" << sampleRate << "Hz, buffer size:" << bufferSize;
     return true;
@@ -101,18 +105,33 @@ void QtAudioOutput::submitSamples(const int16_t* samples, size_t count)
         return;
     }
 
+    const int16_t* outputSamples = samples;
+
+    // Apply fade-in during startup to avoid crackle
+    if (m_samplesProcessed < m_fadeInSamples) {
+        m_fadeBuffer.resize(count);
+
+        for (size_t i = 0; i < count; ++i) {
+            uint32_t sampleIndex = m_samplesProcessed + static_cast<uint32_t>(i);
+            if (sampleIndex < m_fadeInSamples) {
+                // Linear fade from 0 to 1
+                float fadeLevel = static_cast<float>(sampleIndex) / static_cast<float>(m_fadeInSamples);
+                m_fadeBuffer[i] = static_cast<int16_t>(samples[i] * fadeLevel);
+            } else {
+                m_fadeBuffer[i] = samples[i];
+            }
+        }
+
+        m_samplesProcessed += static_cast<uint32_t>(count);
+        outputSamples = m_fadeBuffer.data();
+    }
+
     // Write samples to the audio device
-    // Note: This may block if the buffer is full
-    const char* data = reinterpret_cast<const char*>(samples);
+    const char* data = reinterpret_cast<const char*>(outputSamples);
     qint64 bytesToWrite = static_cast<qint64>(count * sizeof(int16_t));
 
     // Write as much as possible without blocking excessively
-    qint64 bytesWritten = m_audioDevice->write(data, bytesToWrite);
-
-    if (bytesWritten < bytesToWrite) {
-        // Buffer is full, some samples dropped
-        // This is expected during normal operation when audio buffer fills
-    }
+    m_audioDevice->write(data, bytesToWrite);
 }
 
 size_t QtAudioOutput::getQueuedSampleCount() const

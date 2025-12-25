@@ -24,6 +24,7 @@ This file is part of CutieCoCo.
 #include <QAudioFormat>
 #include <QIODevice>
 #include <memory>
+#include <vector>
 
 /**
  * @brief Qt implementation of IAudioOutput
@@ -49,6 +50,11 @@ private:
     QAudioFormat m_format;
     uint32_t m_sampleRate = 0;
     bool m_initialized = false;
+
+    // Fade-in to avoid startup crackle
+    uint32_t m_fadeInSamples = 0;      // Total samples for fade-in period
+    uint32_t m_samplesProcessed = 0;   // Samples processed so far
+    std::vector<int16_t> m_fadeBuffer; // Temp buffer for fade processing
 };
 
 #endif // QTAUDIOOUTPUT_H
