@@ -95,7 +95,9 @@
       "Bash(_xDebug.cpp xDebug.h )",
       "Bash(menu_populator.h)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(find:*)",
+      "Bash(timeout 5 open:*)"
     ]
   }
 }
