@@ -102,14 +102,32 @@ jobs:
         run: |
           APP_PATH="build/qt/cutiecoco.app"
 
-          # Sign the app with hardened runtime (required for notarization)
-          codesign --force --deep --options runtime \
-            --sign "$SIGNING_IDENTITY" \
-            --timestamp \
-            "$APP_PATH"
+          # Sign Qt frameworks first (--deep doesn't always work correctly)
+          find "$APP_PATH/Contents/Frameworks" -name "*.framework" -type d | while read framework; do
+            codesign --force --options runtime --sign "$SIGNING_IDENTITY" --timestamp "$framework"
+          done
+
+          # Sign Qt plugins
+          find "$APP_PATH/Contents/PlugIns" -name "*.dylib" -type f | while read plugin; do
+            codesign --force --options runtime --sign "$SIGNING_IDENTITY" --timestamp "$plugin"
+          done
+
+          # Sign any other dylibs in Frameworks
+          find "$APP_PATH/Contents/Frameworks" -name "*.dylib" -type f | while read dylib; do
+            codesign --force --options runtime --sign "$SIGNING_IDENTITY" --timestamp "$dylib"
+          done
+
+          # Sign the main executable
+          codesign --force --options runtime --sign "$SIGNING_IDENTITY" --timestamp "$APP_PATH/Contents/MacOS/cutiecoco"
+
+          # Sign the app bundle itself
+          codesign --force --options runtime --sign "$SIGNING_IDENTITY" --timestamp "$APP_PATH"
 
           # Verify signature
-          codesign --verify --verbose "$APP_PATH"
+          codesign --verify --verbose=4 "$APP_PATH"
+
+          # Check with spctl
+          spctl -a -vvv "$APP_PATH" || echo "spctl check completed"
 
       - name: Notarize App Bundle
         if: runner.os == 'macOS' && steps.codesign.outputs.has_certificate == 'true' && startsWith(github.ref, 'refs/tags/v')
