@@ -192,11 +192,13 @@ public:
 
         // Convert 32-bit stereo to 16-bit mono
         // Legacy format: low 16 bits = left, high 16 bits = right
-        // Both channels are typically identical for CoCo, so just use left
+        // The samples are unsigned (0-65535), need to convert to signed
         m_audioSamples.reserve(sampleCount);
         for (unsigned int i = 0; i < sampleCount; ++i) {
-            // Extract left channel (low 16 bits) and convert to signed
-            int16_t sample = static_cast<int16_t>(rawBuffer[i] & 0xFFFF);
+            // Extract left channel (low 16 bits)
+            uint16_t unsignedSample = rawBuffer[i] & 0xFFFF;
+            // Convert from unsigned (0-65535) to signed (-32768 to 32767)
+            int16_t sample = static_cast<int16_t>(unsignedSample - 32768);
             m_audioSamples.push_back(sample);
         }
 

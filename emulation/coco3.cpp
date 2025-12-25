@@ -265,7 +265,9 @@ float RenderFrame (SystemState *RFState)
 		break;
 	}
 	FlushAudioBuffer(AudioBuffer, AudioIndex << 2);
-	AudioIndex=0;
+	// NOTE: AudioIndex is now reset by captureAudioSamples() in cocoemu.cpp
+	// after the samples are captured, not here.
+	// AudioIndex=0;
 
 	DebugDrawAudio();
 
@@ -630,7 +632,6 @@ void AudioOut()
 	if (AudioIndex < sizeof(AudioBuffer)/sizeof(AudioBuffer[0])) {
 		AudioBuffer[AudioIndex++]=GetDACSample();
 	}
-	return;
 }
 
 void CassOut()
