@@ -142,7 +142,7 @@ struct SystemState {
     unsigned char DoubleSpeedFlag = 0;
     unsigned char TurboSpeedFlag = 0;
     unsigned char CpuType = 0;
-    unsigned char FrameSkip = 0;
+    unsigned char FrameSkip = 1;  // Must be >= 1 to avoid division by zero
     unsigned char BitDepth = 0;
     unsigned char Throttle = 0;
 
