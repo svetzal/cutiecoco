@@ -137,12 +137,15 @@ void EmulationThread::initializeEmulation()
 
 void EmulationThread::threadMain()
 {
+    fprintf(stderr, "Emulation: thread starting...\n");
     initializeEmulation();
 
     m_frameStartTime = Clock::now();
     m_fpsCounterStartTime = Clock::now();
     m_frameCount = 0;
 
+    fprintf(stderr, "Emulation: entering main loop...\n");
+    int frameNum = 0;
     while (m_running.load()) {
         // Handle reset request
         if (m_resetRequested.load()) {
@@ -160,7 +163,14 @@ void EmulationThread::threadMain()
         auto frameStart = Clock::now();
 
         // Render one frame
+        if (frameNum < 5) {
+            fprintf(stderr, "Emulation: rendering frame %d...\n", frameNum);
+        }
         renderFrame();
+        if (frameNum < 5) {
+            fprintf(stderr, "Emulation: frame %d complete\n", frameNum);
+        }
+        frameNum++;
 
         // Notify callback that frame is ready
         {
