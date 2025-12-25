@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=CutieCoCo
+Comment=Tandy CoCo 3 Emulator
+Exec=cutiecoco
+Icon=cutiecoco
+Categories=Game;Emulator;
+Terminal=false

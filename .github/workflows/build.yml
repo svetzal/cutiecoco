@@ -45,7 +45,8 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgl1-mesa-dev libxkbcommon-dev libxkbcommon-x11-0
+          sudo apt-get install -y libgl1-mesa-dev libxkbcommon-dev libxkbcommon-x11-0 \
+            imagemagick libfuse2 libxcb-cursor0
 
       - name: Configure CMake
         run: cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
@@ -142,14 +143,34 @@ jobs:
           cd package
           zip -r ../cutiecoco-macos.zip cutiecoco.app
 
-      - name: Package (Linux)
+      - name: Package (Linux AppImage)
         if: runner.os == 'Linux'
         run: |
-          cd build/qt
-          mkdir -p package
-          cp cutiecoco package/
-          cd package
-          tar -czvf ../cutiecoco-linux.tar.gz cutiecoco
+          # Create AppDir structure
+          mkdir -p AppDir/usr/bin
+          mkdir -p AppDir/usr/share/applications
+          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
+
+          # Copy executable
+          cp build/qt/cutiecoco AppDir/usr/bin/
+
+          # Copy desktop file
+          cp qt/cutiecoco.desktop AppDir/usr/share/applications/
+          cp qt/cutiecoco.desktop AppDir/  # Also at root for linuxdeployqt
+
+          # Create a simple icon (placeholder - you can replace with a real icon later)
+          convert -size 256x256 xc:purple -fill white -gravity center -pointsize 48 -annotate 0 "CC" AppDir/usr/share/icons/hicolor/256x256/apps/cutiecoco.png
+          cp AppDir/usr/share/icons/hicolor/256x256/apps/cutiecoco.png AppDir/cutiecoco.png
+
+          # Download linuxdeployqt
+          wget -q https://github.com/probonopd/linuxdeployqt/releases/download/continuous/linuxdeployqt-continuous-x86_64.AppImage
+          chmod +x linuxdeployqt-continuous-x86_64.AppImage
+
+          # Create AppImage
+          ./linuxdeployqt-continuous-x86_64.AppImage AppDir/usr/share/applications/cutiecoco.desktop -appimage -verbose=2
+
+          # Rename to standard name
+          mv CutieCoCo*.AppImage cutiecoco-linux.AppImage
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
@@ -174,7 +195,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: build/qt/cutiecoco-linux.tar.gz
+          path: cutiecoco-linux.AppImage
 
       - name: Upload artifact (Windows)
         if: runner.os == 'Windows'
@@ -200,7 +221,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            artifacts/cutiecoco-linux/cutiecoco-linux.tar.gz
+            artifacts/cutiecoco-linux/cutiecoco-linux.AppImage
             artifacts/cutiecoco-macos/cutiecoco-macos.zip
             artifacts/cutiecoco-windows/cutiecoco-windows.zip
           draft: true
