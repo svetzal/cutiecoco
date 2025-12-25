@@ -3,6 +3,7 @@
 
 #include <QMainWindow>
 
+class QAction;
 class EmulatorWidget;
 
 class MainWindow : public QMainWindow
@@ -18,6 +19,7 @@ private:
     void createStatusBar();
 
     EmulatorWidget *m_emulatorWidget;
+    QAction *m_pauseAction = nullptr;
 };
 
 #endif // MAINWINDOW_H

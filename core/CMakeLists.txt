@@ -4,6 +4,7 @@
 add_library(dream-core STATIC
     src/core.cpp
     src/audio.cpp
+    src/emulation.cpp
 )
 
 target_include_directories(dream-core PUBLIC

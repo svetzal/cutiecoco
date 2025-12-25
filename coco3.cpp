@@ -16,11 +16,14 @@ This file is part of VCC (Virtual Color Computer).
     along with VCC (Virtual Color Computer).  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "Windows.h"
-#include "stdio.h"
-#include "ddraw.h"
-#include <math.h>
+#include <cstdio>
+#include <cmath>
+#include <cstring>
+#include <string>
+#include <iostream>
+
 #include "defines.h"
+#include "dream/stubs.h"
 #include "BuildConfig.h"
 #include "tcc1014graphics.h"
 #include "tcc1014registers.h"
@@ -28,33 +31,13 @@ This file is part of VCC (Virtual Color Computer).
 #include "hd6309.h"
 #include "mc6809.h"
 #include "pakinterface.h"
-#include "audio.h"
+#include "dream/audio.h"
 #include "coco3.h"
-#include "throttle.h"
-#include "Vcc.h"
-#include "Cassette.h"
-#include "DirectDrawInterface.h"
-#include "vcc/utils/logger.h"
-#include "keyboard.h"
-#include <string>
-#include <iostream>
-#include "config.h"
 #include "tcc1014mmu.h"
+#include "vcc/utils/logger.h"
 
-
-#if USE_DEBUG_AUDIOTAPE
-#include "IDisplayDebug.h"
-const int AudioHistorySize = 900;
-struct AudioHistory
-{
-	char motorState;
-	char audioState;
-	int inputMin;
-	int inputMax;
-};
-AudioHistory gAudioHistory[AudioHistorySize];
-int gAudioHistoryCount = 0;
-#endif
+// Debug audio tape support disabled for Qt port
+#define USE_DEBUG_AUDIOTAPE 0
 
 constexpr auto RENDERS_PER_BLINK_TOGGLE = 16u;
 
@@ -109,15 +92,13 @@ void SetMasterTickCounter();
 void (*DrawTopBoarder[4]) (SystemState *)={DrawTopBoarder8,DrawTopBoarder16,DrawTopBoarder24,DrawTopBoarder32};
 void (*DrawBottomBoarder[4]) (SystemState *)={DrawBottomBoarder8,DrawBottomBoarder16,DrawBottomBoarder24,DrawBottomBoarder32};
 void (*UpdateScreen[4]) (SystemState *)={UpdateScreen8,UpdateScreen16,UpdateScreen24,UpdateScreen32};
-std::string GetClipboardText();
 void HLINE();
 void VSYNC(unsigned char level);
 void HSYNC(unsigned char level);
-std::string CvtStrToSC(std::string);
 
 using namespace std;
 
-_inline void CPUCycle(double nanoseconds);
+inline void CPUCycle(double nanoseconds);
 
 void UpdateAudio()
 {
@@ -389,7 +370,7 @@ DisplayDetails GetDisplayDetails(const int clientWidth, const int clientHeight)
 	return details;
 }
 
-_inline void HLINE()
+inline void HLINE()
 {
 	UpdateAudio();
 
@@ -407,7 +388,7 @@ _inline void HLINE()
 	HSYNC(1);
 }
 
-_inline void CPUCycle(double NanosToRun)
+inline void CPUCycle(double NanosToRun)
 {
 	// CPU is in a halted state.
 	if (EmuState.Debugger.IsHalted())
@@ -745,357 +726,27 @@ void SetSndOutMode(unsigned char Mode)  //0 = Speaker 1= Cassette Out 2=Cassette
 	SoundOutputMode=Mode;
 }
 
+// Clipboard paste - stubbed for Qt port (will use Qt clipboard API)
 void PasteText() {
-	using namespace std;
-	std::string tmp;
-	string cliptxt, clipparse, lines, debugout;
-	int GraphicsMode = GetGraphicsMode();
-	if (GraphicsMode != 0) {
-		int tmp = MessageBox(nullptr, "Warning: You are not in text mode. Continue Pasting?", "Clipboard", MB_YESNO);
-		if (tmp != 6) { return; }
-	}
-
-	cliptxt = GetClipboardText().c_str();
-	if (PasteWithNew) { cliptxt = "NEW\n" + cliptxt; }
-	char prvchr = '\0';
-	for (size_t t = 0; t < cliptxt.length(); t++) {
-		char tmp = cliptxt[t];
-		bool eol;                   //EJJ CRLF,LFCR,CR,LF eol logic
-		if (tmp == '\x0A') {        //LF
-			if (prvchr == '\x0D') continue;
-			eol = TRUE;
-		} else if (tmp == '\x0D') { //CR
-			if (prvchr == '\x0A') continue;
-			eol = TRUE;
-		} else {
-			eol = FALSE;
-		}
-		prvchr = tmp;
-		if (! eol) {
-			lines += tmp;
-		}
-		else  { //...the character is a <CR>
-			if (lines.length() > 249 && lines.length() < 257 && codepaste==true) {
-				int b = lines.find(" ");
-				string main = lines.substr(0, 249);
-				string extra = lines.substr(249, lines.length() - 249);
-				string spaces;
-				for (int p = 1; p < 249; p++) {
-					spaces.append(" ");
-				}
-				string linestr = lines.substr(0, b);
-				lines = main+"\n\nEDIT "+linestr+"\n"+spaces+"I"+extra+"\n";
-				clipparse += lines;
-				lines.clear();
-			}
-			if(lines.length() >= 257 && codepaste==true) {
-				// Line is too long to handle. Truncate.
-				int b = lines.find(" ");
-				string linestr = "Warning! Line "+lines.substr(0, b)+" is too long for BASIC and will be truncated.";
-				
-				MessageBox(nullptr, linestr.c_str(), "Clipboard", 0);
-				lines = (lines.substr(0, 249));
-			}
-			if(lines.length() <= 249 || codepaste==false) { 
-				// Just a regular line.
-				clipparse += lines+"\n"; 
-				lines.clear();
-			}
-		}
-		if (t == cliptxt.length()-1) {
-			clipparse += lines;
-		}
-	}
-	PasteIntoQueue(CvtStrToSC(clipparse));
+	// TODO: Implement with Qt clipboard
 }
 
 void QueueText(const char * text) {
-	using namespace std;
-	std::string str(text);
-	PasteIntoQueue(CvtStrToSC(str));
+	// TODO: Implement keyboard queue for Qt port
+	(void)text;
 }
 
-std::string CvtStrToSC(string cliptxt)
-{
-	std::string out;
-	char sc;
-	char letter;
-	bool CSHIFT;
-	bool LCNTRL;
-	for (size_t pp = 0; pp <= cliptxt.size(); pp++) {
-		sc = 0;
-		CSHIFT = FALSE;
-		LCNTRL = FALSE;
-		letter = cliptxt[pp];
-		switch (letter)
-		{
-		case '@': sc = 0x03; CSHIFT = TRUE; break;
-		case 'A': sc = 0x1E; CSHIFT = TRUE; break;
-		case 'B': sc = 0x30; CSHIFT = TRUE; break;
-		case 'C': sc = 0x2E; CSHIFT = TRUE; break;
-		case 'D': sc = 0x20; CSHIFT = TRUE; break;
-		case 'E': sc = 0x12; CSHIFT = TRUE; break;
-		case 'F': sc = 0x21; CSHIFT = TRUE; break;
-		case 'G': sc = 0x22; CSHIFT = TRUE; break;
-		case 'H': sc = 0x23; CSHIFT = TRUE; break;
-		case 'I': sc = 0x17; CSHIFT = TRUE; break;
-		case 'J': sc = 0x24; CSHIFT = TRUE; break;
-		case 'K': sc = 0x25; CSHIFT = TRUE; break;
-		case 'L': sc = 0x26; CSHIFT = TRUE; break;
-		case 'M': sc = 0x32; CSHIFT = TRUE; break;
-		case 'N': sc = 0x31; CSHIFT = TRUE; break;
-		case 'O': sc = 0x18; CSHIFT = TRUE; break;
-		case 'P': sc = 0x19; CSHIFT = TRUE; break;
-		case 'Q': sc = 0x10; CSHIFT = TRUE; break;
-		case 'R': sc = 0x13; CSHIFT = TRUE; break;
-		case 'S': sc = 0x1F; CSHIFT = TRUE; break;
-		case 'T': sc = 0x14; CSHIFT = TRUE; break;
-		case 'U': sc = 0x16; CSHIFT = TRUE; break;
-		case 'V': sc = 0x2F; CSHIFT = TRUE; break;
-		case 'W': sc = 0x11; CSHIFT = TRUE; break;
-		case 'X': sc = 0x2D; CSHIFT = TRUE; break;
-		case 'Y': sc = 0x15; CSHIFT = TRUE; break;
-		case 'Z': sc = 0x2C; CSHIFT = TRUE; break;
-		case ' ': sc = 0x39; break;
-		case 'a': sc = 0x1E; break;
-		case 'b': sc = 0x30; break;
-		case 'c': sc = 0x2E; break;
-		case 'd': sc = 0x20; break;
-		case 'e': sc = 0x12; break;
-		case 'f': sc = 0x21; break;
-		case 'g': sc = 0x22; break;
-		case 'h': sc = 0x23; break;
-		case 'i': sc = 0x17; break;
-		case 'j': sc = 0x24; break;
-		case 'k': sc = 0x25; break;
-		case 'l': sc = 0x26; break;
-		case 'm': sc = 0x32; break;
-		case 'n': sc = 0x31; break;
-		case 'o': sc = 0x18; break;
-		case 'p': sc = 0x19; break;
-		case 'q': sc = 0x10; break;
-		case 'r': sc = 0x13; break;
-		case 's': sc = 0x1F; break;
-		case 't': sc = 0x14; break;
-		case 'u': sc = 0x16; break;
-		case 'v': sc = 0x2F; break;
-		case 'w': sc = 0x11; break;
-		case 'x': sc = 0x2D; break;
-		case 'y': sc = 0x15; break;
-		case 'z': sc = 0x2C; break;
-		case '0': sc = 0x0B; break;
-		case '1': sc = 0x02; break;
-		case '2': sc = 0x03; break;
-		case '3': sc = 0x04; break;
-		case '4': sc = 0x05; break;
-		case '5': sc = 0x06; break;
-		case '6': sc = 0x07; break;
-		case '7': sc = 0x08; break;
-		case '8': sc = 0x09; break;
-		case '9': sc = 0x0A; break;
-		case '!': sc = 0x02; CSHIFT = TRUE; break;
-		case '#': sc = 0x04; CSHIFT = TRUE;	break;
-		case '$': sc = 0x05; CSHIFT = TRUE;	break;
-		case '%': sc = 0x06; CSHIFT = TRUE;	break;
-		case '^': sc = 0x07; CSHIFT = TRUE;	break;
-		case '&': sc = 0x08; CSHIFT = TRUE;	break;
-		case '*': sc = 0x09; CSHIFT = TRUE;	break;
-		case '(': sc = 0x0A; CSHIFT = TRUE;	break;
-		case ')': sc = 0x0B; CSHIFT = TRUE;	break;
-		case '-': sc = 0x0C; break;
-		case '=': sc = 0x0D; break;
-		case ';': sc = 0x27; break;
-		case '\'': sc = 0x28; break;
-		case '/': sc = 0x35; break;
-		case '.': sc = 0x34; break;
-		case ',': sc = 0x33; break;
-		case '\n': sc = 0x1C; break;
-		case '+': sc = 0x0D; CSHIFT = TRUE;	break;
-		case ':': sc = 0x27; CSHIFT = TRUE;	break;
-		case '\"': sc = 0x28; CSHIFT = TRUE; break;
-		case '?': sc = 0x35; CSHIFT = TRUE; break;
-		case '<': sc = 0x33; CSHIFT = TRUE; break;
-		case '>': sc = 0x34; CSHIFT = TRUE; break;
-		case '[': sc = 0x1A; LCNTRL = TRUE; break;
-		case ']': sc = 0x1B; LCNTRL = TRUE; break;
-		case '{': sc = 0x1A; CSHIFT = TRUE; break;
-		case '}': sc = 0x1B; CSHIFT = TRUE; break;
-		case '\\': sc = 0x2B; LCNTRL = TRUE; break;
-		case '|': sc = 0x2B; CSHIFT = TRUE; break;
-		case '`': sc = 0x29; break;
-		case '~': sc = 0x29; CSHIFT = TRUE; break;
-		case '_': sc = 0x0C; CSHIFT = TRUE; break;
-		case 0x09: sc = 0x39; break; // TAB
-		default: sc = -1; break;
-		}
-		if (CSHIFT) { out += 0x36; CSHIFT = FALSE; }
-		if (LCNTRL) { out += 0x1D; LCNTRL = FALSE; }
-		out += sc;
-	}
-	return out;
-}
-
-std::string GetClipboardText()
-{
-	if (!OpenClipboard(nullptr)) { MessageBox(nullptr, "Unable to open clipboard.", "Clipboard", 0); return {}; }
-	HANDLE hClip = GetClipboardData(CF_TEXT);
-	if (hClip == nullptr) { CloseClipboard(); MessageBox(nullptr, "No text found in clipboard.", "Clipboard", 0); return {}; }
-	const char* tmp = static_cast<char*>(GlobalLock(hClip));
-	if (tmp == nullptr) {
-		CloseClipboard();  MessageBox(nullptr, "NULL Pointer", "Clipboard", 0); return {};
-	}
-	std::string out(tmp);
-	GlobalUnlock(hClip);
-	CloseClipboard();
-
-	return out;
-}
-
-bool SetClipboard(const string& sendout) {
-	const char* clipout = sendout.c_str();
-	const size_t len = strlen(clipout) + 1;
-	HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, len);
-	memcpy(GlobalLock(hMem), clipout, len);
-	GlobalUnlock(hMem);
-	OpenClipboard(nullptr);
-	EmptyClipboard();
-	SetClipboardData(CF_TEXT, hMem);
-	CloseClipboard();
-	return TRUE;
-}
+// Clipboard/copy/paste functions stubbed for Qt port
+// TODO: Implement with Qt clipboard API
 
 void CopyText() {
-	int idx;
-	int tmp;
-	int lines;
-	int offset;
-	int lastchar;
-	int BytesPerRow = GetBytesPerRow();
-	int GraphicsMode = GetGraphicsMode();
-	unsigned int screenstart = GetStartOfVidram();
-	if (GraphicsMode != 0) { 
-		MessageBox(nullptr, "ERROR: Graphics screen can not be copied.\nCopy can ONLY use a hardware text screen.", "Clipboard", 0); 
-		return;
-	}
-	string out;
-	string tmpline;
-	if (BytesPerRow == 32) { lines = 15; }
-	else { lines = 23; }
-
-	string dbug = "StartofVidram is: " + to_string(screenstart) + "\nGraphicsMode is: " + to_string(GraphicsMode)+"\n";
-	OutputDebugString(dbug.c_str());
-	
-	// Read the lo-res text screen...
-	if (BytesPerRow == 32) {
-		offset = 0;
-		char pcchars[] =
-		{
-			'@','a','b','c','d','e','f','g',
-			'h','i','j','k','l','m','n','o',
-			'p','q','r','s','t','u','v','w',
-			'x','y','z','[','\\',']',' ',' ',
-			' ','!','\"','#','$','%','&','\'',
-			'(',')','*','+',',','-','.','/',
-			'0','1','2','3','4','5','6','7',
-			'8','9',':',';','<','=','>','?',
-			'@','A','B','C','D','E','F','G',
-			'H','I','J','K','L','M','N','O',
-			'P','Q','R','S','T','U','V','W',
-			'X','Y','Z','[','\\',']',' ',' ',
-			' ','!','\"','#','$','%','&','\'',
-			'(',')','*','+',',','-','.','/',
-			'0','1','2','3','4','5','6','7',
-			'8','9',':',';','<','=','>','?',
-			'@','a','b','c','d','e','f','g',
-			'h','i','j','k','l','m','n','o',
-			'p','q','r','s','t','u','v','w',
-			'x','y','z','[','\\',']',' ',' ',
-			' ','!','\"','#','$','%','&','\'',
-			'(',')','*','+',',','-','.','/',
-			'0','1','2','3','4','5','6','7',
-			'8','9',':',';','<','=','>','?'
-		};
-
-		for (int y = 0; y <= lines; y++) {
-			lastchar = 0;
-			tmpline.clear();
-			tmp = 0;
-			for (idx = 0; idx < BytesPerRow; idx++) {
-				tmp = MemRead8(0x0400 + y * BytesPerRow + idx);
-				if (tmp == 32 || tmp == 64 || tmp == 96) { tmp = 30 + offset; } 
-				else { lastchar = idx + 1; }
-				tmpline += pcchars[tmp - offset]; 
-			}
-			tmpline = tmpline.substr(0, lastchar);
-			if (lastchar != 0) { out += tmpline; out += "\n"; }
-
-		}
-		if (out == "") { MessageBox(nullptr, "No text found on screen.", "Clipboard", 0); }
-	}
-	else if (BytesPerRow == 40 || BytesPerRow == 80) {
-		offset = 32;
-		int pcchars[] =
-		{
-			' ','!','\"','#','$','%','&','\'',
-			'(',')','*','+',',','-','.','/',
-			'0','1','2','3','4','5','6','7',
-			'8','9',':',';','<','=','>','?',
-			'@','A','B','C','D','E','F','G',
-			'H','I','J','K','L','M','N','O',
-			'P','Q','R','S','T','U','V','W',
-			'X','Y','Z','[','\\',']',' ',' ',
-			'^','a','b','c','d','e','f','g',
-			'h','i','j','k','l','m','n','o',
-			'p','q','r','s','t','u','v','w',
-			'x','y','z','{','|','}','~','_',
-			'Ç','ü','é','â','ä','à','å','ç',
-			'ê','ë','è','ï','î','ß','Ä','Â',
-			'Ó','æ','Æ','ô','ö','ø','û','ù',
-			'Ø','Ö','Ü','§','£','±','º','',
-			' ',' ','!','\"','#','$','%','&',
-			'\'','(',')','*','+',',','-','.',
-			'/','0','1','2','3','4','5','6',
-			'7','8','9',':',';','<','=','>',
-			'?','@','A','B','C','D','E','F',
-			'G','H','I','J','K','L','M','N',
-			'O','P','Q','R','S','T','U','V',
-			'W','X','Y','Z','[','\\',']',' ',
-			' ','^','a','b','c','d','e','f',
-			'g','h','i','j','k','l','m','n',
-			'o','p','q','r','s','t','u','v',
-			'w','x','y','z','{','|','}','~','_'
-		};
-
-		for (int y = 0; y <= lines; y++) {
-			lastchar = 0;
-			tmpline.clear();
-			tmp = 0;
-			for (idx = 0; idx < BytesPerRow * 2; idx += 2) {
-				tmp = GetMem(screenstart + y * (BytesPerRow * 2) + idx);
-				if (tmp == 32 || tmp == 64 || tmp == 96) { tmp = offset; }
-				else { lastchar = idx / 2 + 1; }
-				tmpline += pcchars[tmp - offset];
-			}
-			tmpline = tmpline.substr(0, lastchar);
-			if (lastchar != 0) { out += tmpline; out += "\n"; }
-		}
-	}
-	
-	bool succ = SetClipboard(out);
+	// TODO: Implement with Qt clipboard
 }
 
 void PasteBASIC() {
-	codepaste = true;
-	PasteText();
-	codepaste = false;
-}
-void PasteBASICWithNew() {
-	int tmp=MessageBox(nullptr, "Warning: This operation will erase the Coco's BASIC memory\nbefore pasting. Continue?", "Clipboard", MB_YESNO);
-	if (tmp != 6) { return; }
-	codepaste = true;
-	PasteWithNew = true;
-	PasteText();
-	codepaste = false;
-	PasteWithNew = false;
+	// TODO: Implement with Qt clipboard
 }
 
+void PasteBASICWithNew() {
+	// TODO: Implement with Qt clipboard
+}
