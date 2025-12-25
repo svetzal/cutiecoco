@@ -5,11 +5,10 @@
 #include <QOpenGLFunctions>
 #include <QTimer>
 #include <memory>
-#include <mutex>
 #include <unordered_map>
 
 namespace cutie {
-class EmulationThread;
+class CocoEmulator;
 }
 
 class EmulatorWidget : public QOpenGLWidget, protected QOpenGLFunctions
@@ -34,9 +33,6 @@ public:
     QSize sizeHint() const override;
     QSize minimumSizeHint() const override;
 
-signals:
-    void frameReady();
-
 protected:
     void initializeGL() override;
     void resizeGL(int w, int h) override;
@@ -46,25 +42,27 @@ protected:
     void keyReleaseEvent(QKeyEvent *event) override;
 
 private slots:
-    void onFrameReady();
+    void onEmulationTick();
 
 private:
-    void onEmulatorFrame(const uint8_t* pixels, int width, int height);
-
     // Framebuffer for emulator output
     QImage m_framebuffer;
     GLuint m_texture = 0;
 
-    // Emulation thread
-    std::unique_ptr<cutie::EmulationThread> m_emulation;
+    // Emulator instance
+    std::unique_ptr<cutie::CocoEmulator> m_emulator;
 
-    // Thread-safe framebuffer update
-    std::mutex m_framebufferMutex;
-    std::vector<uint8_t> m_pendingFrame;
-    bool m_frameUpdated = false;
+    // Emulation timer (calls runFrame at ~60 Hz)
+    QTimer* m_emulationTimer;
 
-    // Refresh timer for display updates
-    QTimer* m_refreshTimer;
+    // Emulation state
+    bool m_running = false;
+    bool m_paused = false;
+
+    // FPS tracking
+    int m_frameCount = 0;
+    qint64 m_fpsStartTime = 0;
+    float m_fps = 0.0f;
 
     // Viewport for aspect-ratio-correct rendering
     int m_viewportX = 0;

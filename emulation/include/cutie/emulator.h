@@ -21,8 +21,8 @@ This file is part of CutieCoCo.
 #include <cstdint>
 #include <filesystem>
 #include <memory>
-#include <span>
 #include <string>
+#include <utility>  // for std::pair
 
 namespace cutie {
 
@@ -36,10 +36,10 @@ class ICartridge;
  * @brief Memory size options for CoCo 3 RAM
  */
 enum class MemorySize {
-    _128K,   // Base CoCo 3 memory
-    _512K,   // Common expansion
-    _2M,     // Extended memory
-    _8M      // Maximum supported
+    Mem128K,   // Base CoCo 3 memory
+    Mem512K,   // Common expansion
+    Mem2M,     // Extended memory
+    Mem8M      // Maximum supported
 };
 
 /**
@@ -54,7 +54,7 @@ enum class CpuType {
  * @brief Emulator configuration options
  */
 struct EmulatorConfig {
-    MemorySize memorySize = MemorySize::_512K;
+    MemorySize memorySize = MemorySize::Mem512K;
     CpuType cpuType = CpuType::MC6809;
     std::filesystem::path systemRomPath;
     uint32_t audioSampleRate = 44100;
@@ -229,12 +229,12 @@ public:
     /**
      * @brief Get the current framebuffer contents
      *
-     * Returns a span of RGBA pixel data (8 bits per component).
+     * Returns a pointer to RGBA pixel data (8 bits per component) and size.
      * The data remains valid until the next call to runFrame().
      *
-     * @return Span of pixel data (width * height * 4 bytes)
+     * @return Pair of (pointer to pixel data, size in bytes)
      */
-    virtual std::span<const uint8_t> getFramebuffer() const = 0;
+    virtual std::pair<const uint8_t*, size_t> getFramebuffer() const = 0;
 
     // ========================================================================
     // Audio Output
@@ -252,9 +252,9 @@ public:
      * Returns 16-bit signed mono samples generated during the last frame.
      * The data remains valid until the next call to runFrame().
      *
-     * @return Span of audio samples
+     * @return Pair of (pointer to samples, count of samples)
      */
-    virtual std::span<const int16_t> getAudioSamples() const = 0;
+    virtual std::pair<const int16_t*, size_t> getAudioSamples() const = 0;
 
     // ========================================================================
     // Configuration & State

@@ -1,11 +1,13 @@
 #include "emulatorwidget.h"
-#include "cutie/emulation.h"
+#include "cutie/emulator.h"
 #include "cutie/keyboard.h"
 
 #include <QKeyEvent>
 #include <QOpenGLContext>
+#include <QDateTime>
 #include <optional>
 #include <unordered_map>
+#include <cstring>
 
 namespace {
     // CoCo 3 aspect ratio (640x480 = 4:3)
@@ -141,12 +143,19 @@ namespace {
     }
 }
 
+namespace {
+    // Framebuffer dimensions (must match emulator output)
+    constexpr int FRAMEBUFFER_WIDTH = 640;
+    constexpr int FRAMEBUFFER_HEIGHT = 480;
+
+    // Target frame interval in milliseconds (~59.923 Hz)
+    constexpr int FRAME_INTERVAL_MS = 16;  // ~62.5 Hz, close enough for display
+}
+
 EmulatorWidget::EmulatorWidget(QWidget *parent)
     : QOpenGLWidget(parent)
-    , m_framebuffer(cutie::FRAMEBUFFER_WIDTH, cutie::FRAMEBUFFER_HEIGHT, QImage::Format_RGBA8888)
-    , m_emulation(std::make_unique<cutie::EmulationThread>())
-    , m_pendingFrame(cutie::FRAMEBUFFER_WIDTH * cutie::FRAMEBUFFER_HEIGHT * 4)
-    , m_refreshTimer(new QTimer(this))
+    , m_framebuffer(FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT, QImage::Format_RGBA8888)
+    , m_emulationTimer(new QTimer(this))
 {
     // Enable keyboard focus
     setFocusPolicy(Qt::StrongFocus);
@@ -154,15 +163,13 @@ EmulatorWidget::EmulatorWidget(QWidget *parent)
     // Initialize framebuffer with black
     m_framebuffer.fill(Qt::black);
 
-    // Connect frame ready signal to slot for thread-safe UI updates
-    connect(this, &EmulatorWidget::frameReady, this, &EmulatorWidget::onFrameReady, Qt::QueuedConnection);
+    // Create emulator with default config
+    cutie::EmulatorConfig config;
+    m_emulator = cutie::CocoEmulator::create(config);
 
-    // Set up refresh timer for display updates
-    // We use a timer to decouple the emulation frame rate from display refresh
-    connect(m_refreshTimer, &QTimer::timeout, this, [this]() {
-        update();
-    });
-    m_refreshTimer->setInterval(16); // ~60 Hz display refresh
+    // Set up emulation timer
+    connect(m_emulationTimer, &QTimer::timeout, this, &EmulatorWidget::onEmulationTick);
+    m_emulationTimer->setInterval(FRAME_INTERVAL_MS);
 }
 
 EmulatorWidget::~EmulatorWidget()
@@ -179,91 +186,108 @@ EmulatorWidget::~EmulatorWidget()
 QSize EmulatorWidget::sizeHint() const
 {
     // Return the native framebuffer size as the preferred size
-    return QSize(cutie::FRAMEBUFFER_WIDTH, cutie::FRAMEBUFFER_HEIGHT);
+    return QSize(FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT);
 }
 
 QSize EmulatorWidget::minimumSizeHint() const
 {
     // Minimum size is half the native resolution
-    return QSize(cutie::FRAMEBUFFER_WIDTH / 2, cutie::FRAMEBUFFER_HEIGHT / 2);
+    return QSize(FRAMEBUFFER_WIDTH / 2, FRAMEBUFFER_HEIGHT / 2);
 }
 
 void EmulatorWidget::startEmulation()
 {
-    if (m_emulation->isRunning()) {
+    if (m_running) {
         return;
     }
 
-    // Start the emulation thread with a callback that signals the main thread
-    m_emulation->start([this](const uint8_t* pixels, int width, int height) {
-        onEmulatorFrame(pixels, width, height);
-    });
+    // Initialize emulator if not ready
+    if (!m_emulator->isReady()) {
+        if (!m_emulator->init()) {
+            // TODO: Handle initialization error
+            return;
+        }
+    }
 
-    // Start the display refresh timer
-    m_refreshTimer->start();
+    m_running = true;
+    m_paused = false;
+    m_frameCount = 0;
+    m_fpsStartTime = QDateTime::currentMSecsSinceEpoch();
+
+    // Start the emulation timer
+    m_emulationTimer->start();
 }
 
 void EmulatorWidget::stopEmulation()
 {
-    m_refreshTimer->stop();
-    m_emulation->stop();
+    m_emulationTimer->stop();
+    m_running = false;
+
+    if (m_emulator) {
+        m_emulator->shutdown();
+    }
 }
 
 void EmulatorWidget::pauseEmulation()
 {
-    m_emulation->pause();
+    m_paused = true;
 }
 
 void EmulatorWidget::resumeEmulation()
 {
-    m_emulation->resume();
+    m_paused = false;
+    m_fpsStartTime = QDateTime::currentMSecsSinceEpoch();
+    m_frameCount = 0;
 }
 
 void EmulatorWidget::resetEmulation()
 {
-    m_emulation->reset();
+    if (m_emulator) {
+        m_emulator->reset();
+    }
 }
 
 bool EmulatorWidget::isEmulationRunning() const
 {
-    return m_emulation->isRunning();
+    return m_running;
 }
 
 bool EmulatorWidget::isEmulationPaused() const
 {
-    return m_emulation->isPaused();
+    return m_paused;
 }
 
 float EmulatorWidget::getFps() const
 {
-    return m_emulation->getFps();
+    return m_fps;
 }
 
-void EmulatorWidget::onEmulatorFrame(const uint8_t* pixels, int width, int height)
+void EmulatorWidget::onEmulationTick()
 {
-    // Called from emulation thread - copy frame data and signal main thread
-    {
-        std::lock_guard<std::mutex> lock(m_framebufferMutex);
-        size_t size = width * height * 4;
-        if (m_pendingFrame.size() != size) {
-            m_pendingFrame.resize(size);
-        }
-        std::memcpy(m_pendingFrame.data(), pixels, size);
-        m_frameUpdated = true;
+    if (!m_running || m_paused || !m_emulator) {
+        return;
     }
 
-    // Signal the main thread that a frame is ready
-    emit frameReady();
-}
+    // Run one frame of emulation
+    m_emulator->runFrame();
 
-void EmulatorWidget::onFrameReady()
-{
-    // Called on main thread - update framebuffer from pending data
-    std::lock_guard<std::mutex> lock(m_framebufferMutex);
-    if (m_frameUpdated) {
-        // Copy pending frame to QImage framebuffer
-        std::memcpy(m_framebuffer.bits(), m_pendingFrame.data(), m_pendingFrame.size());
-        m_frameUpdated = false;
+    // Get the framebuffer and copy to our QImage
+    auto [pixels, size] = m_emulator->getFramebuffer();
+    if (pixels && size > 0) {
+        std::memcpy(m_framebuffer.bits(), pixels, size);
+    }
+
+    // Update display
+    update();
+
+    // Calculate FPS
+    ++m_frameCount;
+    qint64 now = QDateTime::currentMSecsSinceEpoch();
+    qint64 elapsed = now - m_fpsStartTime;
+    if (elapsed >= 1000) {
+        m_fps = static_cast<float>(m_frameCount) * 1000.0f / static_cast<float>(elapsed);
+        m_frameCount = 0;
+        m_fpsStartTime = now;
     }
 }
 
