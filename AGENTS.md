@@ -4,120 +4,178 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-DREAM is a Tandy Color Computer 3 (CoCo 3) emulator for Windows, forked from VCC. The project aims to improve code quality and hardware emulation accuracy. It emulates a 128K CoCo 3 with support for memory expansion up to 8192K, both Motorola 6809 and Hitachi 6309 CPUs, and various expansion cartridges.
+DREAM is a Tandy Color Computer 3 (CoCo 3) emulator, forked from VCC. The project is currently being ported from Windows to cross-platform Qt. It emulates a 128K CoCo 3 with support for memory expansion up to 8192K, both Motorola 6809 and Hitachi 6309 CPUs.
+
+## Current State: Qt Port In Progress
+
+The `qt` branch contains the cross-platform port. Key changes:
+- CMake replaces Visual Studio build system
+- Qt6 replaces Windows-specific UI/graphics/audio
+- Windows-specific code has been removed; legacy emulation files are being cleaned
+
+**What's Done:**
+- CMake build system with Qt6 dependencies
+- Core library structure (`core/`)
+- Qt application skeleton (`qt/`)
+- Compatibility layer for legacy VCC types (`core/include/dream/`)
+- Stub audio system and debugger
+
+**What Remains:**
+- Clean remaining legacy files of Windows dependencies
+- Integrate core emulation into Qt app
+- Implement emulation loop, display, keyboard input
 
 ## Issue Tracking
 
-This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
-
-### Quick Reference
+This project uses **bd** (beads) for issue tracking. Run `bd ready` to find available work.
 
 ```bash
-bd ready              # Find available work
+bd ready              # Find available work (no blockers)
 bd show <id>          # View issue details
-bd update <id> --status in_progress  # Claim work
+bd update <id> --status=in_progress  # Claim work
 bd close <id>         # Complete work
-bd sync               # Sync with git
+bd sync --from-main   # Sync beads (for ephemeral branches)
 ```
 
-### Landing the Plane (Session Completion)
+## Build Commands (Qt Port)
 
-**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
-
-**MANDATORY WORKFLOW:**
-
-1. **File issues for remaining work** - Create issues for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds
-3. **Update issue status** - Close finished work, update in-progress items
-4. **PUSH TO REMOTE** - This is MANDATORY:
-   ```bash
-   git pull --rebase
-   bd sync
-   git push
-   git status  # MUST show "up to date with origin"
-   ```
-5. **Clean up** - Clear stashes, prune remote branches
-6. **Verify** - All changes committed AND pushed
-7. **Hand off** - Provide context for next session
-
-**CRITICAL RULES:**
-- Work is NOT complete until `git push` succeeds
-- NEVER stop before pushing - that leaves work stranded locally
-- NEVER say "ready to push when you are" - YOU must push
-- If push fails, resolve and retry until it succeeds
-
-## Build Commands
-
-**Requirements:** Visual Studio 2022 with C++ and MFC support, run from Developer Command Prompt.
+**Requirements:** Qt 6.x, CMake 3.20+
 
 ```bash
-# Full build (Release)
-nuget restore
-msbuild vcc.sln /m /p:Configuration=Release /p:Platform=x86
+# Configure (adjust Qt path as needed)
+mkdir build && cd build
+cmake .. -DCMAKE_PREFIX_PATH="$HOME/Qt/6.10.1/macos"
 
-# Debug build
-msbuild vcc.sln /m /p:Configuration=Debug /p:Platform=x86
+# Build
+cmake --build .
 
-# Build script (includes USE_LOGGING)
-scripts\build-action.bat
+# Run (macOS)
+open qt/dream-vcc.app
 ```
 
-**Output locations:**
-- Main executable: `build/Win32/Release/bin/vcc.exe`
-- Cartridge DLLs: `build/Win32/Release/bin/cartridges/*.dll`
-
-## Testing
-
-Tests use Google Test via NuGet package.
-
-```bash
-# Build and run tests
-msbuild libcommon-test/libcommon-test.vcxproj /p:Configuration=Release /p:Platform=x86
-build\Win32\Release\bin\libcommon-test.exe
-```
+**Output:** `build/qt/dream-vcc.app` (macOS) or `build/qt/dream-vcc` (Linux)
 
 ## Architecture
 
-### Plugin System
+### Directory Structure
 
-Cartridges are implemented as DLLs that plug into the emulator. Each cartridge:
-1. Implements the `vcc::bus::cartridge` interface (libcommon/include/vcc/bus/cartridge.h)
-2. Provides a `cartridge_driver` for hardware I/O operations
-3. Exports standard entry points for the emulator to load
+```
+core/                    # Platform-independent emulation library
+  include/dream/
+    types.h              # Core types (SystemState, Point, Size, Rect)
+    compat.h             # VCC compatibility layer (includes types + debugger)
+    debugger.h           # Stub debugger (no-op implementation)
+    audio.h              # Audio interface + NullAudioSystem
+  src/
+    core.cpp             # Global EmuState definition
+    audio.cpp            # Audio factory
 
-**Cartridge projects:** FD502 (floppy+Becker port), HardDisk, MPI (Multi-Pak), Ramdisk, SuperIDE, GMC (Game Master), acia, becker, orch90 (Orchestra-90)
+qt/                      # Qt application
+  include/
+    mainwindow.h
+    emulatorwidget.h     # OpenGL display widget
+  src/
+    main.cpp
+    mainwindow.cpp
+    emulatorwidget.cpp
 
-### Core Components
+# Legacy files (being cleaned/integrated):
+mc6809.cpp, hd6309.cpp   # CPU emulation
+tcc1014*.cpp             # GIME graphics/MMU
+coco3.cpp                # System coordination
+mc6821.cpp               # PIA (keyboard, joystick, cassette I/O)
+```
 
-| Component | Purpose |
-|-----------|---------|
-| `Vcc.cpp` | Main application, window management, emulation loop |
-| `coco3.cpp` | System emulation, frame rendering coordination |
-| `mc6809.cpp` / `hd6309.cpp` | CPU emulation (6809 and 6309) |
-| `tcc1014graphics.cpp` | GIME video/graphics controller (TCC1014) |
-| `tcc1014mmu.cpp` | Memory management unit |
-| `config.cpp` | Configuration persistence |
+### Compatibility Layer
 
-### libcommon Shared Library
+The `core/include/dream/compat.h` header provides VCC-compatible types so legacy code can compile with minimal changes:
 
-Contains reusable components used by both the main emulator and cartridges:
-- `vcc/bus/` - Cartridge and expansion port interfaces
-- `vcc/media/` - Disk image handling (JVC, VHD, DMK formats)
-- `vcc/devices/` - ROM, PSG (SN76489), serial, RTC support
-- `vcc/ui/` - Dialogs, menus, file selection helpers
-- `vcc/utils/` - File operations, persistence, logging
+```cpp
+// Legacy code includes this:
+#include "defines.h"      // Redirects to dream/compat.h
 
-### Build Configuration
+// Provides:
+// - SystemState struct with EmuState global
+// - VCC::Point, VCC::Size, VCC::Rect
+// - VCC::Debugger::Debugger (stub)
+// - Legacy constants (FRAMEINTERVAL, COLORBURST, etc.)
+```
 
-Property files control common settings:
-- `vcc-base.props` - Shared settings for all projects
-- `vcc-debug.props` / `vcc-release.props` - Configuration-specific settings
+### Core Emulation Files
 
-Key preprocessor definitions: `DIRECTINPUT_VERSION=0x0800`, `_WIN32_WINNT=0x0500`
+| File | Purpose | Cleanup Status |
+|------|---------|----------------|
+| `mc6809.cpp` | Motorola 6809 CPU | Cleaned |
+| `hd6309.cpp` | Hitachi 6309 CPU | Cleaned |
+| `mc6821.cpp/h` | PIA (I/O ports) | Cleaned |
+| `coco3.cpp` | System emulation | Needs cleanup |
+| `tcc1014graphics.cpp` | GIME video | Needs cleanup |
+| `tcc1014mmu.cpp` | Memory management | Needs cleanup |
+| `tcc1014registers.cpp` | GIME registers | Needs cleanup |
+| `iobus.cpp` | I/O bus | Needs cleanup |
+| `pakinterface.cpp` | Cartridge interface | Needs cleanup |
+
+## Cleaning Legacy Files
+
+When cleaning a legacy file of Windows dependencies:
+
+1. **Remove Windows includes:**
+   ```cpp
+   // Remove these:
+   #include <Windows.h>
+   #include "Debugger.h"      // Deleted
+   #include "Disassembler.h"  // Deleted
+   #include "keyboard.h"      // Deleted
+   #include "joystickinput.h" // Deleted
+   #include "Cassette.h"      // Deleted
+   #include "config.h"        // Deleted
+   #include "audio.h"         // Old Windows version, deleted
+   ```
+
+2. **Keep defines.h** - it now redirects to `dream/compat.h`
+
+3. **Replace Windows types:**
+   - `BOOL` → `bool`
+   - `TRUE/FALSE` → `true/false`
+   - `HANDLE` → `FILE*` or appropriate type
+   - `HWND`, `HINSTANCE` → `void*` (in SystemState)
+
+4. **Remove MSVC pragmas:**
+   ```cpp
+   // Remove:
+   #pragma warning( disable : 4800 )
+   ```
+
+5. **Stub removed functionality:**
+   ```cpp
+   // For removed keyboard/joystick/cassette:
+   static unsigned char vccKeyboardGetScan(unsigned char) { return 0; }
+   static unsigned short get_joyStick_input(int) { return 0; }
+   ```
+
+6. **Use C++ standard headers:**
+   - `<stdio.h>` → `<cstdio>`
+   - `<stdlib.h>` → `<cstdlib>`
+   - `<string.h>` → `<cstring>`
+
+## libcommon
+
+Platform-independent components (still usable):
+- `vcc/bus/` - Cartridge interfaces
+- `vcc/media/` - Disk image handling (JVC, VHD, DMK)
+- `vcc/devices/` - ROM, PSG, RTC, serial
+- `vcc/utils/logger.h` - Logging
+
+Windows-specific components have been removed:
+- `vcc/ui/` - Deleted (was Windows dialogs)
+- `vcc/utils/winapi.h` - Deleted
+- `vcc/utils/FileOps.h` - Deleted
+- `vcc/utils/filesystem.h` - Deleted
 
 ## Code Conventions
 
-- Windows-specific APIs throughout (HWND, HINSTANCE, DirectX, DirectInput)
-- Mix of C-style legacy code and modern C++ (gradual migration in progress)
-- Cartridge DLLs must maintain C-compatible export interfaces
-- Header-only includes in libcommon use `LIBCOMMON_EXPORT` macro for DLL visibility
+- Legacy code uses `EmuState` global and `VCC::` namespace
+- New code should use `dream::` namespace
+- Prefer `<cstdio>` over `<stdio.h>` style includes
+- Use `bool` not `BOOL`
+- Core emulation should have no platform dependencies
