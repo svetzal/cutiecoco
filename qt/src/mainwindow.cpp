@@ -11,6 +11,7 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , m_emulatorWidget(new EmulatorWidget(this))
 {
+    fprintf(stderr, "MainWindow: setting up...\n");
     setWindowTitle("CutieCoCo - CoCo 3 Emulator");
     setCentralWidget(m_emulatorWidget);
 
@@ -20,10 +21,13 @@ MainWindow::MainWindow(QWidget *parent)
     // Size window to fit the emulator widget at native resolution
     // plus room for menu bar and status bar
     adjustSize();
+    fprintf(stderr, "MainWindow: setup complete, scheduling emulation start...\n");
 
     // Start emulation when window is shown
     QTimer::singleShot(0, this, [this]() {
+        fprintf(stderr, "MainWindow: starting emulation...\n");
         m_emulatorWidget->startEmulation();
+        fprintf(stderr, "MainWindow: emulation started\n");
     });
 
     // Update FPS in status bar periodically
