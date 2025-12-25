@@ -61,38 +61,12 @@ jobs:
           # macdeployqt bundles Qt frameworks into the app
           macdeployqt build/qt/cutiecoco.app -verbose=2
 
-          # Fix Qt framework structure to avoid "bundle format is ambiguous" error
-          # macdeployqt sometimes creates copies instead of symlinks
+          # Remove Headers and .prl files that can cause signing issues
           APP_PATH="build/qt/cutiecoco.app"
-
-          for framework in "$APP_PATH/Contents/Frameworks"/*.framework; do
-            framework_name=$(basename "$framework" .framework)
-            echo "Fixing framework: $framework_name"
-
-            # Remove any existing top-level files/symlinks
-            rm -f "$framework/$framework_name"
-            rm -rf "$framework/Resources"
-            rm -f "$framework/Versions/Current"
-
-            # Ensure Versions/A exists and has the binary
-            if [ -f "$framework/Versions/A/$framework_name" ]; then
-              # Create proper symlinks
-              cd "$framework/Versions"
-              ln -sf A Current
-              cd "$framework"
-              ln -sf "Versions/Current/$framework_name" "$framework_name"
-              if [ -d "Versions/Current/Resources" ]; then
-                ln -sf "Versions/Current/Resources" Resources
-              fi
-            fi
-          done
-
-          # Remove Headers and .prl files
           find "$APP_PATH/Contents/Frameworks" -name "Headers" -exec rm -rf {} + 2>/dev/null || true
           find "$APP_PATH/Contents/Frameworks" -name "*.prl" -delete
 
-          echo "Framework structure fixed"
-          # Verify structure
+          echo "Framework cleanup complete"
           ls -la "$APP_PATH/Contents/Frameworks/QtCore.framework/"
 
       # macOS Code Signing
@@ -136,13 +110,9 @@ jobs:
         run: |
           APP_PATH="build/qt/cutiecoco.app"
 
-          # Sign Qt framework binaries (inside Versions/A)
-          for framework in "$APP_PATH/Contents/Frameworks"/*.framework; do
-            framework_name=$(basename "$framework" .framework)
-            if [ -f "$framework/Versions/A/$framework_name" ]; then
-              codesign --force --options runtime --sign "$SIGNING_IDENTITY" --timestamp \
-                "$framework/Versions/A/$framework_name"
-            fi
+          # Sign Qt frameworks
+          find "$APP_PATH/Contents/Frameworks" -name "*.framework" -type d | while read framework; do
+            codesign --force --options runtime --sign "$SIGNING_IDENTITY" --timestamp "$framework"
           done
 
           # Sign Qt plugins
@@ -193,11 +163,8 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           cd build/qt
-          # Create a distributable app bundle
-          mkdir -p package
-          cp -R cutiecoco.app package/
-          cd package
-          zip -r ../cutiecoco-macos.zip cutiecoco.app
+          # Create a distributable app bundle using ditto to preserve symlinks
+          ditto -c -k --sequesterRsrc --keepParent cutiecoco.app cutiecoco-macos.zip
 
       - name: Package (Linux AppImage)
         if: runner.os == 'Linux'
