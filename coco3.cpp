@@ -202,15 +202,18 @@ float RenderFrame (SystemState *RFState)
 		HLINE();
 	}
 
-	if (firstFrame) fprintf(stderr, "RenderFrame: VSYNC(1)\n");
+	if (firstFrame) { fprintf(stderr, "RenderFrame: VSYNC(1)\n"); fflush(stderr); }
 	// VSYNC goes High
 	VSYNC(1);
 
+	if (firstFrame) { fprintf(stderr, "RenderFrame: second HLINE loop (3 lines)\n"); fflush(stderr); }
 	// Three lines of blank after VSYNC goes high
 	for (RFState->LineCounter = 0; RFState->LineCounter < 3; RFState->LineCounter++)
 	{
+		if (firstFrame) fprintf(stderr, "RenderFrame: HLINE2 %d\n", RFState->LineCounter);
 		HLINE();
 	}
+	if (firstFrame) fprintf(stderr, "RenderFrame: second loop done\n");
 
 	// Top Border actually begins here, but is offscreen
 	for (RFState->LineCounter = 0; RFState->LineCounter < TopOffScreen; RFState->LineCounter++)
