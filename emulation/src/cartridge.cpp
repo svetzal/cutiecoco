@@ -17,6 +17,7 @@ This file is part of CutieCoCo.
 */
 
 #include "cutie/cartridge.h"
+#include "mc6821.h"
 #include <fstream>
 #include <cstdio>
 
@@ -75,6 +76,9 @@ bool CartridgeManager::load(const std::filesystem::path& path)
     fprintf(stderr, "Loaded cartridge: %s (%zu bytes)\n",
             m_name.c_str(), m_rom.size());
 
+    // Notify PIA that a cartridge is inserted (for auto-start)
+    SetCart(true);
+
     return true;
 }
 
@@ -85,6 +89,9 @@ void CartridgeManager::eject()
     m_name.clear();
     m_bankSelect = 0;
     m_lastError.clear();
+
+    // Notify PIA that cartridge is removed
+    SetCart(false);
 }
 
 bool CartridgeManager::hasCartridge() const
@@ -131,15 +138,22 @@ uint8_t CartridgeManager::read(uint16_t address) const
         return 0xFF;  // No cartridge - open bus
     }
 
-    // Mask address to 16KB window
-    address &= 0x3FFF;
+    // The MMU passes addresses in the range 0x0000-0x7FFF for cartridge reads
+    // (offset + bank within 32KB cartridge space)
+    // Mask to 32KB as the original VCC code does
+    address &= 0x7FFF;
 
-    size_t offset = calculateOffset(address);
-    if (offset >= m_rom.size()) {
-        return 0xFF;  // Out of range
+    // For simple ROMs, just read directly
+    // The address already incorporates the bank offset from the MMU
+    if (address >= m_rom.size()) {
+        // For ROMs smaller than 32KB, mirror the content
+        if (m_rom.size() > 0) {
+            return m_rom[address % m_rom.size()];
+        }
+        return 0xFF;
     }
 
-    return m_rom[offset];
+    return m_rom[address];
 }
 
 void CartridgeManager::writePort(uint8_t port, uint8_t value)
