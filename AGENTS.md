@@ -16,20 +16,21 @@ The `qt` branch contains the cross-platform port. Key changes:
 **What's Done:**
 - CMake build system with Qt6 dependencies
 - Monorepo structure: `emulation/`, `platforms/`, `shared/`
-- Emulation library (`emulation/`)
-- Qt application (`platforms/qt/`)
+- Emulation library (`emulation/`) with public CocoEmulator API
+- Qt application (`platforms/qt/`) boots to BASIC prompt
 - Compatibility layer for legacy VCC types (`emulation/include/cutie/`)
-- Stub audio system and debugger
-- EmulationThread with std::chrono timing (~60 FPS)
-- Thread-safe frame callback to Qt display widget
+- CocoEmulator concrete implementation (`emulation/src/cocoemu.cpp`)
+- EmulatorWidget uses timer-driven synchronous API (not threaded callbacks)
 - Stubs for removed Windows functionality (`emulation/include/cutie/stubs.h`)
-- coco3.cpp cleaned of Windows dependencies
-- Keyboard input with character-based mapping (`emulation/src/keyboard.cpp`)
+- All legacy emulation files cleaned and integrated
+- Keyboard input with character-based mapping
 
 **What Remains:**
-- Clean remaining legacy files (pakinterface.cpp)
-- Audio output via Qt
-- Joystick input
+- Audio output via Qt (task: DREAM-VCC-2wv)
+- Joystick input (task: DREAM-VCC-j2o)
+- Settings dialogs (task: DREAM-VCC-wfo)
+- Configuration system (task: DREAM-VCC-cc9)
+- Clean pakinterface.cpp for cartridge support
 
 ## Issue Tracking
 
@@ -70,20 +71,23 @@ emulation/               # Platform-independent emulation library
   include/cutie/
     types.h              # Core types (SystemState, Point, Size, Rect)
     compat.h             # VCC compatibility layer (includes types + debugger)
-    debugger.h           # Stub debugger (no-op implementation)
-    audio.h              # Audio interface + NullAudioSystem
-    emulation.h          # EmulationThread class for frame timing
+    emulator.h           # Public CocoEmulator API
+    interfaces.h         # Platform abstraction interfaces
+    keyboard.h           # Keyboard matrix types and Keyboard class
+    framebuffer.h        # IFrameBuffer interface
+    emulation.h          # EmulationThread class (legacy, still available)
     stubs.h              # Stubs for removed Windows functionality
   src/
     core.cpp             # Global EmuState definition
-    audio.cpp            # Audio factory
+    cocoemu.cpp          # CocoEmulator implementation (main entry point)
     emulation.cpp        # EmulationThread implementation
     keyboard.cpp         # Keyboard matrix handling
-  # Legacy emulation files:
+  # Legacy emulation files (cleaned, integrated):
   mc6809.cpp, hd6309.cpp # CPU emulation
   tcc1014*.cpp           # GIME graphics/MMU
   coco3.cpp              # System coordination
   mc6821.cpp             # PIA (I/O ports)
+  iobus.cpp              # I/O bus
   libcommon/             # Shared utilities (logger, bus, media)
 
 platforms/
@@ -112,14 +116,15 @@ The emulation library exposes a clean public API through two main headers:
 ```cpp
 namespace cutie {
 
-enum class MemorySize { _128K, _512K, _2M, _8M };
+// Note: Enum values use Mem prefix to avoid conflicts with legacy macros (_128K, _512K, etc.)
+enum class MemorySize { Mem128K, Mem512K, Mem2M, Mem8M };
 enum class CpuType { MC6809, HD6309 };
 
 struct EmulatorConfig {
-    MemorySize memorySize = MemorySize::_512K;
+    MemorySize memorySize = MemorySize::Mem512K;
     CpuType cpuType = CpuType::MC6809;
     std::filesystem::path systemRomPath;
-    uint32_t audioSampleRate = 44100;
+    uint32_t audioSampleRate = 44100;  // Note: Set to 0 until audio backend implemented
 };
 
 class CocoEmulator {
@@ -131,7 +136,7 @@ public:
     virtual void reset() = 0;
     virtual void shutdown() = 0;
 
-    // Execution
+    // Execution (synchronous - caller controls timing)
     virtual void runFrame() = 0;
     virtual int runCycles(int cycles) = 0;
 
@@ -140,13 +145,15 @@ public:
     virtual void setJoystickAxis(int joystick, int axis, int value) = 0;
     virtual void setJoystickButton(int joystick, int button, bool pressed) = 0;
 
-    // Output
-    virtual std::span<const uint8_t> getFramebuffer() const = 0;
-    virtual std::span<const int16_t> getAudioSamples() const = 0;
+    // Output (C++17 compatible - uses std::pair instead of std::span)
+    virtual std::pair<const uint8_t*, size_t> getFramebuffer() const = 0;
+    virtual std::pair<const int16_t*, size_t> getAudioSamples() const = 0;
 };
 
 } // namespace cutie
 ```
+
+**Implementation:** `emulation/src/cocoemu.cpp` - Concrete `CocoEmulatorImpl` class that wraps legacy emulation code.
 
 **`emulation/include/cutie/interfaces.h`** - Platform abstraction interfaces:
 ```cpp
@@ -364,49 +371,72 @@ Windows-specific components have been removed:
 - Use `bool` not `BOOL`
 - Core emulation should have no platform dependencies
 
-## EmulationThread Pattern
+## Emulation Execution Models
 
-The `cutie::EmulationThread` class (`emulation/include/cutie/emulation.h`) runs the emulation loop in a separate thread:
+There are two execution models available:
+
+### 1. CocoEmulator (Recommended for Qt)
+
+The `cutie::CocoEmulator` class provides a **synchronous, pull-based API**. The platform controls timing:
 
 ```cpp
-// Start emulation with a frame callback
-m_emulation->start([this](const uint8_t* pixels, int width, int height) {
-    onEmulatorFrame(pixels, width, height);
-});
+// Create and initialize
+auto emulator = cutie::CocoEmulator::create(config);
+emulator->init();
 
-// Control emulation
-m_emulation->pause();
-m_emulation->resume();
-m_emulation->reset();
-m_emulation->stop();
+// In Qt, use a QTimer to drive frame execution
+QTimer* timer = new QTimer(this);
+connect(timer, &QTimer::timeout, this, &EmulatorWidget::onEmulationTick);
+timer->setInterval(16);  // ~60 Hz
+timer->start();
+
+void EmulatorWidget::onEmulationTick() {
+    m_emulator->runFrame();
+
+    auto [pixels, size] = m_emulator->getFramebuffer();
+    std::memcpy(m_framebuffer.bits(), pixels, size);
+    update();  // Trigger repaint
+}
 ```
 
-**Key design points:**
-- Uses `std::chrono::steady_clock` for precise frame timing (~59.923 Hz)
-- Frame callback is invoked from the emulation thread
-- Use mutex + signal to safely pass frame data to Qt main thread
+**Advantages:**
+- No thread synchronization needed - runs on Qt main thread
+- Simpler code, no mutex/signal complexity
+- Platform controls timing (can easily pause, single-step, etc.)
+
+### 2. EmulationThread (Legacy, Still Available)
+
+The `cutie::EmulationThread` class runs emulation in a **separate thread with callbacks**:
+
+```cpp
+m_emulation->start([this](const uint8_t* pixels, int width, int height) {
+    onEmulatorFrame(pixels, width, height);  // Called from emulation thread!
+});
+```
+
+**Requires thread-safe frame passing** (see Qt Thread Safety below).
 
 ## Qt Thread Safety
 
-Qt UI must be updated from the main thread. The `EmulatorWidget` uses this pattern:
+If using `EmulationThread` (not recommended), Qt UI must be updated from the main thread:
 
 ```cpp
-// In emulatorwidget.h - signal for cross-thread notification
+// Signal for cross-thread notification
 signals:
     void frameReady();
 
-// In constructor - connect with QueuedConnection for thread safety
+// Connect with QueuedConnection for thread safety
 connect(this, &EmulatorWidget::frameReady,
         this, &EmulatorWidget::onFrameReady, Qt::QueuedConnection);
 
-// Callback from emulation thread
+// Callback from emulation thread - copy data and signal
 void EmulatorWidget::onEmulatorFrame(const uint8_t* pixels, int w, int h) {
     {
         std::lock_guard<std::mutex> lock(m_framebufferMutex);
         std::memcpy(m_pendingFrame.data(), pixels, w * h * 4);
         m_frameUpdated = true;
     }
-    emit frameReady();  // Signal main thread
+    emit frameReady();
 }
 
 // Slot on main thread - safe to update Qt objects
@@ -418,6 +448,8 @@ void EmulatorWidget::onFrameReady() {
     }
 }
 ```
+
+**Current implementation uses CocoEmulator with QTimer** - simpler and works well.
 
 ## Qt OpenGL and HiDPI Displays
 
@@ -708,6 +740,56 @@ Key implementation points:
 - `emulation/src/keyboard.cpp` - Matrix storage and scan function
 - `platforms/qt/src/emulatorwidget.cpp` - Qt key event → CoCo key mapping
 - `emulation/mc6821.cpp` - PIA calls `vccKeyboardGetScan()` when $FF00 is read
+
+## Original Windows VCC Code Reference
+
+The original VCC/DREAM-VCC Windows code is preserved on the `dream-vcc/main` branch. Use `git show dream-vcc/main:<file>` to read files without switching branches.
+
+### Salvageable Components
+
+| Component | Location | Notes |
+|-----------|----------|-------|
+| **Menu Builder** | `libcommon/ui/menu/` | Already abstracted, needs Qt backend |
+| **Config Structures** | `config.cpp` - `STRConfig` | Data layout for settings |
+| **Keyboard Tables** | `keyboard.cpp`, `keyboardLayout.h` | Scancode → CoCo mappings |
+| **Joystick Logic** | `joystickinput.cpp` | Hi-res ramp timing, DAC logic |
+| **Debugger Architecture** | `Debugger.cpp` | Client registration pattern |
+
+### Must Be Replaced
+
+| Windows Tech | Qt Replacement |
+|-------------|----------------|
+| DirectSound | QAudioOutput / QAudioSink |
+| DirectInput8 | QGamepad or SDL2 |
+| GetOpenFileName | QFileDialog |
+| MessageBox | QMessageBox |
+| DirectDraw/D3D | Already using OpenGL |
+| INI via Win32 | QSettings |
+
+### Dialogs to Recreate (from resource.h)
+
+- `IDD_CONFIG` - Main configuration tabbed dialog
+- `IDD_CPU` - CPU type (6809/6309), speed/overclock
+- `IDD_AUDIO` - Sound card selection, sample rate
+- `IDD_DISPLAY` - Monitor type, scanlines, aspect ratio
+- `IDD_INPUT` - Keyboard layout selection
+- `IDD_JOYSTICK` - Joystick axis/button mapping
+- `IDD_CASSETTE` - Tape player controls
+- `IDD_BITBANGER` - Serial port configuration
+- `IDD_ABOUTBOX` - Version and credits
+
+### Reading Original Code
+
+```bash
+# List UI-related files
+git ls-tree -r --name-only dream-vcc/main | grep -iE '(dialog|config|menu|ui)'
+
+# Read a specific file
+git show dream-vcc/main:config.cpp | head -200
+
+# Find dialog callbacks
+git show dream-vcc/main:config.cpp | grep -n "CALLBACK"
+```
 
 ## Troubleshooting
 
