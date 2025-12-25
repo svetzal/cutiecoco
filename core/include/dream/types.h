@@ -1,6 +1,7 @@
 #ifndef DREAM_TYPES_H
 #define DREAM_TYPES_H
 
+#include <cstddef>
 #include <cstdint>
 #include <atomic>
 #include <array>

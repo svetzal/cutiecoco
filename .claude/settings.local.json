@@ -109,7 +109,11 @@
       "Bash(git remote add:*)",
       "Bash(git push:*)",
       "Bash(ln:*)",
-      "Bash(git branch:*)"
+      "Bash(git branch:*)",
+      "Bash(git worktree:*)",
+      "Bash(git fetch:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run view:*)"
     ]
   }
 }

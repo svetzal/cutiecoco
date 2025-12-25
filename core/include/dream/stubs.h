@@ -10,6 +10,7 @@ Qt implementations are being developed.
 
 #include <cstdint>
 #include <cstdio>
+#include <string>
 
 // ============================================================================
 // Cassette stubs (was in Cassette.h)
