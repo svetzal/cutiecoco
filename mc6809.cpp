@@ -16,14 +16,12 @@ This file is part of VCC (Virtual Color Computer).
     along with VCC (Virtual Color Computer).  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include <Windows.h>
-#include <stdio.h>
+#include <cstdio>
 #include "defines.h"
 #include "mc6809.h"
 #include "mc6809defs.h"
 #include "tcc1014mmu.h"
 #include "OpDecoder.h"
-#include "Disassembler.h"
 
 //Global variables for CPU Emulation-----------------------
 
@@ -32,9 +30,6 @@ This file is part of VCC (Virtual Color Computer).
 #define OTEST8(c,a,b,r) c ^ (((a^b^r)>>7) &1)
 #define OTEST16(c,a,b,r) c ^ (((a^b^r)>>15)&1)
 #define ZTEST(r) !r
-
-// Quiet legacy compiler warning about forcing int value to bool
-#pragma warning( disable : 4800 )
 
 typedef union
 {

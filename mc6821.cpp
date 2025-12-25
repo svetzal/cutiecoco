@@ -98,24 +98,24 @@ Bit 1 FIRQ POLARITY 0 = falling 1 = rising
 Bit 0 CART FIRQ 0 = FIRQ disabled 1 = enabled
 */
 
-#include <Windows.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <cmath>
+#include <cstdint>
 #include "defines.h"
 #include "mc6821.h"
 #include "hd6309.h"
-#include "keyboard.h"
 #include "tcc1014graphics.h"
 #include "tcc1014registers.h"
-#include "joystickinput.h"
 #include "coco3.h"
 #include "pakinterface.h"
-#include "Cassette.h"
 #include "vcc/utils/logger.h"
-#include "resource.h"
-#include <cstdint>
+
+// Stubs for removed keyboard/joystick/cassette functionality
+static unsigned char vccKeyboardGetScan(unsigned char) { return 0; }
+static unsigned short get_joyStick_input(int) { return 0; }
+static unsigned char SetCasSample(unsigned char) { return 0; }
 
 static unsigned char rega[4]={0,0,0,0};  //PIA0
 static unsigned char regb[4]={0,0,0,0};  //PIA1
@@ -125,12 +125,11 @@ static unsigned char LeftChannel=0,RightChannel=0;
 static unsigned char Asample=0,Ssample=0,Csample=0;
 static bool CartInserted = false, CartAutoStart = true;
 static unsigned char AddLF=0;
-static HANDLE hPrintFile=INVALID_HANDLE_VALUE;
+static FILE* hPrintFile = nullptr;
 void CaptureBit(unsigned char);
-static HANDLE hout=nullptr;
-void WritePrintMon(char *);
-LRESULT CALLBACK PrintMon(HWND, UINT , WPARAM , LPARAM );
-static BOOL MonState=FALSE;
+// Print monitor removed - was Windows-specific
+static void WritePrintMon(char *) {}
+static bool MonState = false;
 
 // Shift Row Col
 unsigned char pia0_read(unsigned char port)
@@ -450,10 +449,9 @@ void SetCassetteSample(unsigned char Sample)
 
 void CaptureBit(unsigned char Sample)
 {
-	unsigned long BytesMoved=0;
 	static unsigned char BitMask=1,StartWait=1;
 	static char Byte=0;
-	if (hPrintFile==INVALID_HANDLE_VALUE)
+	if (hPrintFile==nullptr)
 		return;
 	if (StartWait & Sample)	//Waiting for start bit
 		return;
@@ -469,13 +467,13 @@ void CaptureBit(unsigned char Sample)
 	{
 		BitMask=1;
 		StartWait=1;
-		WriteFile(hPrintFile,&Byte,1,&BytesMoved,nullptr);
+		fwrite(&Byte, 1, 1, hPrintFile);
 		if (MonState)
 			WritePrintMon(&Byte);
 		if ((Byte==0x0D) & AddLF)
 		{
 			Byte=0x0A;
-			WriteFile(hPrintFile,&Byte,1,&BytesMoved,nullptr);
+			fwrite(&Byte, 1, 1, hPrintFile);
 		}
 		Byte=0;
 	}
@@ -484,19 +482,17 @@ void CaptureBit(unsigned char Sample)
 
 int OpenPrintFile(const char *FileName)
 {
-	hPrintFile=CreateFile( FileName,GENERIC_READ | GENERIC_WRITE,
-			FILE_SHARE_READ,nullptr,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,nullptr);
-	if (hPrintFile==INVALID_HANDLE_VALUE)
+	hPrintFile = fopen(FileName, "w+b");
+	if (hPrintFile==nullptr)
 		return 0;
 	return 1;
 }
 
 void ClosePrintFile()
 {
-	CloseHandle(hPrintFile);
-	hPrintFile=INVALID_HANDLE_VALUE;
-	FreeConsole();
-	hout=nullptr;
+	if (hPrintFile)
+		fclose(hPrintFile);
+	hPrintFile=nullptr;
 	return;
 }
 
@@ -506,30 +502,9 @@ void SetSerialParams(unsigned char TextMode)
 	return;
 }
 
-void SetMonState(BOOL State)
+void SetMonState(bool State)
 {
-	if (MonState & !State)
-	{
-		FreeConsole();
-		hout=nullptr;
-	}
 	MonState=State;
 	return;
-}
-void WritePrintMon(char *Data)
-{
-	unsigned long dummy;
-	if (hout==nullptr)
-	{
-		AllocConsole();
-		hout=GetStdHandle(STD_OUTPUT_HANDLE);
-		SetConsoleTitle("Printer Monitor");
-	}
-	WriteConsole(hout,Data,1,&dummy,nullptr);
-	if (Data[0]==0x0D)
-	{
-		Data[0]=0x0A;
-		WriteConsole(hout,Data,1,&dummy,nullptr);
-	}
 }
 

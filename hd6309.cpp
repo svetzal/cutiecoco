@@ -18,22 +18,18 @@ This file is part of VCC (Virtual Color Computer).
 		Additional 6309 modifications by Walter ZAMBOTTI 2019
 */
 
-#include <stdio.h>
-#include <stdlib.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include "defines.h"
 #include "hd6309.h"
 #include "hd6309defs.h"
 #include "tcc1014mmu.h"
 #include "vcc/utils/logger.h"
-#include "string.h"
 #include "OpDecoder.h"
-#include "Disassembler.h"
 
-#if defined(_WIN64)
-#define MSABI 
-#else
-#define MSABI __attribute__((ms_abi))
-#endif
+// MSABI not needed for Qt port
+#define MSABI
 
 //Global variables for CPU Emulation-----------------------
 #define NTEST8(r) r>0x7F

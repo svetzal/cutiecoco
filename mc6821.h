@@ -18,8 +18,6 @@ This file is part of VCC (Virtual Color Computer).
     along with VCC (Virtual Color Computer).  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include <Windows.h>
-
 unsigned char pia0_read(unsigned char port);
 void pia0_write(unsigned char data,unsigned char port);
 unsigned char pia1_read(unsigned char port);
@@ -27,7 +25,7 @@ void pia1_write(unsigned char data,unsigned char port);
 
 void ClosePrintFile();
 void SetSerialParams(unsigned char);
-void SetMonState(BOOL);
+void SetMonState(bool);
 unsigned char VDG_Mode();
 void irq_hs(int);
 void irq_fs(int);
