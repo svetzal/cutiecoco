@@ -29,6 +29,13 @@ public:
     void TraceCaptureInterruptMasked(int /*type*/, int /*cycles*/, const CPUState& /*state*/) {}
     void TraceCaptureInterruptRequest(unsigned char /*type*/, int /*cycles*/, const CPUState& /*state*/) {}
 
+    // Screen event tracing - all no-ops
+    void TraceCaptureScreenEvent(int /*event*/, int /*param*/) {}
+    void TraceEmulatorCycle(int /*event*/, int /*state*/, double /*nanos*/, double /*p1*/, double /*p2*/, double /*p3*/, double /*p4*/) {}
+
+    // Debugger update - no-op
+    void Update() {}
+
     // Break/halt conditions
     bool Break_Enabled() const { return false; }
     bool Halt_Enabled() const { return false; }
@@ -39,6 +46,18 @@ public:
 // VCC namespace compatibility
 namespace VCC {
     using CPUState = dream::CPUState;
+
+    // Trace event types (stubs)
+    namespace TraceEvent {
+        constexpr int ScreenTopBorder = 0;
+        constexpr int ScreenRender = 1;
+        constexpr int ScreenBottomBorder = 2;
+        constexpr int ScreenVSYNCLow = 3;
+        constexpr int ScreenVSYNCHigh = 4;
+        constexpr int ScreenHSYNCLow = 5;
+        constexpr int ScreenHSYNCHigh = 6;
+        constexpr int EmulatorCycle = 7;
+    }
 
     namespace Debugger {
         using Debugger = dream::Debugger;

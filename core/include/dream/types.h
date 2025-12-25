@@ -115,8 +115,11 @@ struct CPUState {
     uint8_t A{};
     uint8_t B{};
     uint8_t CC{};
-    bool E{};  // For 6309
-    bool F{};  // For 6309
+    uint8_t E{};  // For 6309
+    uint8_t F{};  // For 6309
+    uint8_t MD{};  // 6309 mode/division register
+    uint16_t V{};   // 6309 V register
+    bool IsNative6309{};  // True if running in native 6309 mode
 };
 
 // System state - the main emulator state structure

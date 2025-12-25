@@ -16,19 +16,17 @@ This file is part of VCC (Virtual Color Computer).
     along with VCC (Virtual Color Computer).  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "Windows.h"
 #include "defines.h"
-#include "stdio.h"
-#include "stdlib.h"
-#include "string.h"
+#include "dream/stubs.h"
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include "tcc1014mmu.h"
 #include "iobus.h"
-#include "config.h"
 #include "tcc1014graphics.h"
-#include "pakinterface.h"
+// pakinterface.h removed - stubs provide PakGetSystemRomPath and PackMem8Read
 #include "vcc/utils/logger.h"
 #include "hd6309.h"
-#include "vcc/utils/FileOps.h"
 
 
 static unsigned char *MemPages[1024];
@@ -324,7 +322,7 @@ bool MemCheckWrite(unsigned short address)
 	return false;
 }
 
-unsigned char __fastcall fMemRead8( unsigned short address)
+unsigned char fMemRead8( unsigned short address)
 {
 	if (address<0xFE00)
 	{
@@ -341,7 +339,7 @@ unsigned char __fastcall fMemRead8( unsigned short address)
 	return( PackMem8Read( MemPageOffsets[MmuRegisters[MmuState][address>>13]] + (address & 0x1FFF) ));
 }
 
-void __fastcall fMemWrite8(unsigned char data,unsigned short address)
+void fMemWrite8(unsigned char data,unsigned short address)
 {
 	if (address<0xFE00)
 	{

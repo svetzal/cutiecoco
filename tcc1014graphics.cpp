@@ -16,19 +16,15 @@ This file is part of VCC (Virtual Color Computer).
     along with VCC (Virtual Color Computer).  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include <Windows.h>
 #include "defines.h"
+#include "dream/stubs.h"
 #include "tcc1014graphics.h"
-#include "ddraw.h"
 #include "coco3.h"
 #include "cc2font.h"
 #include "cc3font.h"
-#include "config.h"
-#include "DirectDrawInterface.h"
 #include "vcc/utils/logger.h"
-#include "math.h"
-#include <stdio.h>
-#include <CommCtrl.h>	// Windows common controls
+#include <cmath>
+#include <cstdio>
 
 using Surface32 = VCC::VideoArray<unsigned int, 640 * 480>;
 

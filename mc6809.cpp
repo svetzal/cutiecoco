@@ -21,7 +21,7 @@ This file is part of VCC (Virtual Color Computer).
 #include "mc6809.h"
 #include "mc6809defs.h"
 #include "tcc1014mmu.h"
-#include "OpDecoder.h"
+// OpDecoder.h removed - not used
 
 //Global variables for CPU Emulation-----------------------
 
@@ -72,7 +72,7 @@ static int HaltedInsPending = 0;
 //END Global variables for CPU Emulation-------------------
 
 //Fuction Prototypes---------------------------------------
-_inline unsigned short CalculateEA(unsigned char);
+static unsigned short CalculateEA(unsigned char);
 static void set_cc_flags(unsigned char);
 static unsigned char get_cc_flags();
 static void cpu_firq();

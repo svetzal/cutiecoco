@@ -2,6 +2,7 @@
 // Platform-independent CoCo 3 emulation core
 
 #include "dream/compat.h"
+#include "dream/stubs.h"
 
 namespace dream {
 
@@ -12,3 +13,7 @@ SystemState g_emu_state;
 
 // Legacy global EmuState for VCC compatibility
 SystemState EmuState;
+
+// CPU execution stub - will be replaced when CPU files are integrated
+int CPUExecStub(int /*cycles*/) { return 0; }
+CPUExecFuncPtr CPUExec = CPUExecStub;

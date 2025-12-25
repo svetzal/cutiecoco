@@ -104,12 +104,13 @@ Bit 0 CART FIRQ 0 = FIRQ disabled 1 = enabled
 #include <cmath>
 #include <cstdint>
 #include "defines.h"
+#include "dream/stubs.h"
 #include "mc6821.h"
 #include "hd6309.h"
 #include "tcc1014graphics.h"
 #include "tcc1014registers.h"
 #include "coco3.h"
-#include "pakinterface.h"
+// pakinterface.h removed - not needed here
 #include "vcc/utils/logger.h"
 
 // Stubs for removed keyboard/joystick/cassette functionality

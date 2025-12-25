@@ -16,16 +16,15 @@ This file is part of VCC (Virtual Color Computer).
     along with VCC (Virtual Color Computer).  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include <Windows.h>
-#include "stdio.h"
 #include "defines.h"
+#include "dream/stubs.h"
+#include <cstdio>
 #include "iobus.h"
 #include "mc6821.h"
-#include "pakinterface.h"
+// pakinterface.h removed - stubs provide PakReadPort/PakWritePort
 #include "tcc1014registers.h"
 #include "tcc1014mmu.h"
 #include "vcc/utils/logger.h"
-#include "config.h"
 unsigned char port_read(unsigned short addr)
 {
 	unsigned char port=0,temp=0;

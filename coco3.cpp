@@ -30,7 +30,7 @@ This file is part of VCC (Virtual Color Computer).
 #include "mc6821.h"
 #include "hd6309.h"
 #include "mc6809.h"
-#include "pakinterface.h"
+// pakinterface.h removed - stubs provide PakTimer
 #include "dream/audio.h"
 #include "coco3.h"
 #include "tcc1014mmu.h"

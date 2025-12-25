@@ -19,6 +19,9 @@ This file is part of VCC (Virtual Color Computer).
     along with VCC (Virtual Color Computer).  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include <vector>
+#include "dream/compat.h"  // For VCC::CPUState
+
 void MC6809Init();
 int  MC6809Exec( int);
 void MC6809Reset();

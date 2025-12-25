@@ -26,7 +26,7 @@ This file is part of VCC (Virtual Color Computer).
 #include "hd6309defs.h"
 #include "tcc1014mmu.h"
 #include "vcc/utils/logger.h"
-#include "OpDecoder.h"
+// OpDecoder.h removed - not used
 
 // MSABI not needed for Qt port
 #define MSABI
@@ -191,7 +191,7 @@ static unsigned char *NatEmuCycles[] =
 };
 
 int HaltedInsPending = 0;
-BOOL DoingTFM = false;
+bool DoingTFM = false;
 
 //END Global variables for CPU Emulation-------------------
 

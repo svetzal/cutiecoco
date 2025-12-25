@@ -16,14 +16,12 @@ This file is part of VCC (Virtual Color Computer).
     along with VCC (Virtual Color Computer).  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include <Windows.h>
 #include "defines.h"
+#include "dream/stubs.h"
 #include "tcc1014mmu.h"
 #include "tcc1014registers.h"
 #include "tcc1014graphics.h"
 #include "coco3.h"
-#include "keyboard.h"
-#include "Vcc.h"
 
 
 static unsigned char VDG_Mode=0;

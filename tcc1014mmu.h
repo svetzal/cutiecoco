@@ -20,7 +20,7 @@ This file is part of VCC (Virtual Color Computer).
     You should have received a copy of the GNU General Public License
     along with VCC (Virtual Color Computer).  If not, see <http://www.gnu.org/licenses/>.
 */
-#include "Debugger.h"
+// Debugger.h was removed - MMUState is defined inline below
 
 namespace VCC
 {
@@ -53,8 +53,8 @@ unsigned short GetMem(unsigned long);
 void SetMem(unsigned long, unsigned short);
 bool MemCheckWrite(unsigned short address);
 
-void __fastcall fMemWrite8(unsigned char,unsigned short );
-unsigned char __fastcall fMemRead8(unsigned short);
+void fMemWrite8(unsigned char,unsigned short );
+unsigned char fMemRead8(unsigned short);
 
 void SetMapType(unsigned char);
 void LoadRom();

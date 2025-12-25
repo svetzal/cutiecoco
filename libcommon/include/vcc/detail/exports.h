@@ -17,9 +17,14 @@
 ////////////////////////////////////////////////////////////////////////////////
 #pragma once
 
-
-#ifdef LIBCOMMON_EXPORTS
-#define LIBCOMMON_EXPORT __declspec(dllexport)
+// Platform-specific export macros
+#ifdef _WIN32
+    #ifdef LIBCOMMON_EXPORTS
+        #define LIBCOMMON_EXPORT __declspec(dllexport)
+    #else
+        #define LIBCOMMON_EXPORT __declspec(dllimport)
+    #endif
 #else
-#define LIBCOMMON_EXPORT __declspec(dllimport)
+    // On non-Windows platforms, no special export annotation needed
+    #define LIBCOMMON_EXPORT
 #endif

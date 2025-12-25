@@ -24,6 +24,11 @@ constexpr auto COLORBURST = 3579545.0;
 constexpr auto AUDIOBUFFERS = 12u;
 constexpr auto QUERY = 255u;
 
+// Interrupt type constants (for debugger/tracing)
+constexpr auto FIRQ = 0;
+constexpr auto IRQ = 1;
+constexpr auto NMI = 2;
+
 // Forward declaration
 struct SystemState;
 
@@ -114,6 +119,9 @@ namespace VCC {
         virtual int GetRect(int rectOption, Rect* rect) = 0;
         virtual void SetSurface(void* ptr, uint8_t bitDepth, long stride) = 0;
     };
+
+    // Stub for debugger haltpoint functionality
+    inline void ApplyHaltpoints(bool) {}
 }
 
 // Main system state structure
