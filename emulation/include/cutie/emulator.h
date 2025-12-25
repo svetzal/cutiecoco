@@ -257,6 +257,40 @@ public:
     virtual std::pair<const int16_t*, size_t> getAudioSamples() const = 0;
 
     // ========================================================================
+    // Cartridge
+    // ========================================================================
+
+    /**
+     * @brief Load a ROM cartridge from file
+     *
+     * Loads a ROM pak (.rom, .ccc, .pak) into the cartridge slot.
+     * The cartridge will be active after loading and may auto-start.
+     *
+     * @param path Path to the ROM file
+     * @return true if the cartridge was loaded successfully
+     */
+    virtual bool loadCartridge(const std::filesystem::path& path) = 0;
+
+    /**
+     * @brief Eject the current cartridge
+     *
+     * Removes any loaded cartridge from the slot.
+     */
+    virtual void ejectCartridge() = 0;
+
+    /**
+     * @brief Check if a cartridge is loaded
+     * @return true if a cartridge is present in the slot
+     */
+    virtual bool hasCartridge() const = 0;
+
+    /**
+     * @brief Get the name of the loaded cartridge
+     * @return Cartridge name, or empty string if no cartridge
+     */
+    virtual std::string getCartridgeName() const = 0;
+
+    // ========================================================================
     // Configuration & State
     // ========================================================================
 

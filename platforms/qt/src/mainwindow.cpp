@@ -1,11 +1,14 @@
 #include "mainwindow.h"
 #include "emulatorwidget.h"
+#include "cutie/emulator.h"
 
 #include <QMenuBar>
 #include <QMenu>
 #include <QStatusBar>
 #include <QApplication>
 #include <QTimer>
+#include <QFileDialog>
+#include <QMessageBox>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -46,6 +49,40 @@ void MainWindow::createMenus()
 {
     // File menu
     QMenu *fileMenu = menuBar()->addMenu(tr("&File"));
+
+    // Cartridge submenu
+    fileMenu->addAction(tr("&Insert Cartridge..."), [this]() {
+        QString fileName = QFileDialog::getOpenFileName(
+            this,
+            tr("Insert Cartridge"),
+            QString(),
+            tr("ROM Files (*.rom *.ccc *.pak);;All Files (*)"));
+
+        if (!fileName.isEmpty()) {
+            auto* emu = m_emulatorWidget->emulator();
+            if (emu) {
+                if (emu->loadCartridge(fileName.toStdString())) {
+                    statusBar()->showMessage(
+                        tr("Loaded: %1").arg(QString::fromStdString(emu->getCartridgeName())),
+                        3000);
+                } else {
+                    QMessageBox::warning(this, tr("Load Error"),
+                        tr("Failed to load cartridge:\n%1").arg(
+                            QString::fromStdString(emu->getLastError())));
+                }
+            }
+        }
+    });
+
+    fileMenu->addAction(tr("&Eject Cartridge"), [this]() {
+        auto* emu = m_emulatorWidget->emulator();
+        if (emu && emu->hasCartridge()) {
+            emu->ejectCartridge();
+            statusBar()->showMessage(tr("Cartridge ejected"), 2000);
+        }
+    });
+
+    fileMenu->addSeparator();
     fileMenu->addAction(tr("&Quit"), QKeySequence::Quit, qApp, &QApplication::quit);
 
     // Emulator menu

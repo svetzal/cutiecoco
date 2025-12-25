@@ -2,6 +2,7 @@
 #include "qtaudiooutput.h"
 #include "cutie/emulator.h"
 #include "cutie/keyboard.h"
+#include "cutie/joystick.h"
 
 #include <QKeyEvent>
 #include <QOpenGLContext>
@@ -153,6 +154,152 @@ namespace {
     // CoCo runs at ~59.923 Hz (NTSC). Use 16ms (~62.5 Hz) and let
     // adaptive audio resampling handle the rate mismatch
     constexpr int FRAME_INTERVAL_MS = 16;
+
+    // Joystick key state tracking
+    // Tracks which numpad direction keys are pressed for joystick emulation
+    struct JoystickKeyState {
+        bool up = false;
+        bool down = false;
+        bool left = false;
+        bool right = false;
+        bool button1 = false;
+        bool button2 = false;
+    };
+
+    // Global joystick key state (for left joystick, numpad controls)
+    JoystickKeyState g_leftJoyKeys;
+
+    // Update joystick axis based on key state
+    void updateJoystickFromKeys(cutie::CocoEmulator* emu) {
+        if (!emu) return;
+
+        // Calculate X axis (0=left, 32=center, 63=right)
+        int x = cutie::AXIS_CENTER;
+        if (g_leftJoyKeys.left && !g_leftJoyKeys.right) {
+            x = cutie::AXIS_MIN;
+        } else if (g_leftJoyKeys.right && !g_leftJoyKeys.left) {
+            x = cutie::AXIS_MAX;
+        }
+
+        // Calculate Y axis (0=up, 32=center, 63=down)
+        int y = cutie::AXIS_CENTER;
+        if (g_leftJoyKeys.up && !g_leftJoyKeys.down) {
+            y = cutie::AXIS_MIN;
+        } else if (g_leftJoyKeys.down && !g_leftJoyKeys.up) {
+            y = cutie::AXIS_MAX;
+        }
+
+        // Apply to left joystick
+        emu->setJoystickAxis(cutie::JOYSTICK_LEFT, cutie::AXIS_X, x);
+        emu->setJoystickAxis(cutie::JOYSTICK_LEFT, cutie::AXIS_Y, y);
+        emu->setJoystickButton(cutie::JOYSTICK_LEFT, cutie::BUTTON_1, g_leftJoyKeys.button1);
+        emu->setJoystickButton(cutie::JOYSTICK_LEFT, cutie::BUTTON_2, g_leftJoyKeys.button2);
+    }
+
+    // Handle numpad joystick key press
+    // Returns true if the key was handled as a joystick key
+    bool handleJoystickKeyPress(int qtKey, cutie::CocoEmulator* emu) {
+        bool handled = true;
+
+        switch (qtKey) {
+            // Numpad directions (8=up, 2=down, 4=left, 6=right)
+            case Qt::Key_8:
+                g_leftJoyKeys.up = true;
+                break;
+            case Qt::Key_2:
+                g_leftJoyKeys.down = true;
+                break;
+            case Qt::Key_4:
+                g_leftJoyKeys.left = true;
+                break;
+            case Qt::Key_6:
+                g_leftJoyKeys.right = true;
+                break;
+            // Diagonals (7=up-left, 9=up-right, 1=down-left, 3=down-right)
+            case Qt::Key_7:
+                g_leftJoyKeys.up = true;
+                g_leftJoyKeys.left = true;
+                break;
+            case Qt::Key_9:
+                g_leftJoyKeys.up = true;
+                g_leftJoyKeys.right = true;
+                break;
+            case Qt::Key_1:
+                g_leftJoyKeys.down = true;
+                g_leftJoyKeys.left = true;
+                break;
+            case Qt::Key_3:
+                g_leftJoyKeys.down = true;
+                g_leftJoyKeys.right = true;
+                break;
+            // Buttons (0=button1, 5=button2)
+            case Qt::Key_0:
+                g_leftJoyKeys.button1 = true;
+                break;
+            case Qt::Key_5:
+                g_leftJoyKeys.button2 = true;
+                break;
+            default:
+                handled = false;
+                break;
+        }
+
+        if (handled) {
+            updateJoystickFromKeys(emu);
+        }
+        return handled;
+    }
+
+    // Handle numpad joystick key release
+    // Returns true if the key was handled as a joystick key
+    bool handleJoystickKeyRelease(int qtKey, cutie::CocoEmulator* emu) {
+        bool handled = true;
+
+        switch (qtKey) {
+            case Qt::Key_8:
+                g_leftJoyKeys.up = false;
+                break;
+            case Qt::Key_2:
+                g_leftJoyKeys.down = false;
+                break;
+            case Qt::Key_4:
+                g_leftJoyKeys.left = false;
+                break;
+            case Qt::Key_6:
+                g_leftJoyKeys.right = false;
+                break;
+            case Qt::Key_7:
+                g_leftJoyKeys.up = false;
+                g_leftJoyKeys.left = false;
+                break;
+            case Qt::Key_9:
+                g_leftJoyKeys.up = false;
+                g_leftJoyKeys.right = false;
+                break;
+            case Qt::Key_1:
+                g_leftJoyKeys.down = false;
+                g_leftJoyKeys.left = false;
+                break;
+            case Qt::Key_3:
+                g_leftJoyKeys.down = false;
+                g_leftJoyKeys.right = false;
+                break;
+            case Qt::Key_0:
+                g_leftJoyKeys.button1 = false;
+                break;
+            case Qt::Key_5:
+                g_leftJoyKeys.button2 = false;
+                break;
+            default:
+                handled = false;
+                break;
+        }
+
+        if (handled) {
+            updateJoystickFromKeys(emu);
+        }
+        return handled;
+    }
 }
 
 EmulatorWidget::EmulatorWidget(QWidget *parent)
@@ -423,6 +570,14 @@ void EmulatorWidget::keyPressEvent(QKeyEvent *event)
         return;
     }
 
+    // Check for numpad joystick keys (when KeypadModifier is set)
+    if (event->modifiers() & Qt::KeypadModifier) {
+        if (handleJoystickKeyPress(event->key(), m_emulator.get())) {
+            event->accept();
+            return;
+        }
+    }
+
     // First, try non-printable key mapping (arrows, modifiers, function keys)
     auto cocoKey = mapQtKeyToCoco(event->key());
     if (cocoKey) {
@@ -470,6 +625,14 @@ void EmulatorWidget::keyReleaseEvent(QKeyEvent *event)
     if (shouldIgnoreKeyEvent(event)) {
         event->ignore();
         return;
+    }
+
+    // Check for numpad joystick keys (when KeypadModifier is set)
+    if (event->modifiers() & Qt::KeypadModifier) {
+        if (handleJoystickKeyRelease(event->key(), m_emulator.get())) {
+            event->accept();
+            return;
+        }
     }
 
     // First, try non-printable key mapping

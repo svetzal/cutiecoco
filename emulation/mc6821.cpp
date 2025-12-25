@@ -106,6 +106,7 @@ Bit 0 CART FIRQ 0 = FIRQ disabled 1 = enabled
 #include "defines.h"
 #include "cutie/stubs.h"
 #include "cutie/keyboard.h"
+#include "cutie/joystick.h"
 #include "mc6821.h"
 #include "hd6309.h"
 #include "tcc1014graphics.h"
@@ -154,7 +155,14 @@ unsigned char pia0_read(unsigned char port)
 			if (dda)
 			{
 				rega[1]=(rega[1] & 63);
-				return (vccKeyboardGetScan(rega[2]|~rega_dd[2])); //Read
+				// Get keyboard scan and AND with joystick buttons (both active-low)
+				unsigned char keyData = vccKeyboardGetScan(rega[2]|~rega_dd[2]);
+				unsigned char joyButtons = vccJoystickGetButtonBits();
+				// Bits 0-3 are shared between keyboard and joystick buttons
+				unsigned char result = (keyData & 0xF0) | ((keyData & joyButtons) & 0x0F);
+				// Add joystick analog comparison result to bit 7
+				result = (result & 0x7F) | vccJoystickGetComparison(GetMuxState());
+				return result;
 			}
 			else
 				return(rega_dd[port]);
@@ -222,11 +230,10 @@ void pia0_write(unsigned char data,unsigned char port)
 	{
 	case 0:  // cpu write FF00
 		if (dda) {
-            if (data == 0) vccJoystickStartCCMax();
 			rega[port]=data;
-        } else {
+		} else {
 			rega_dd[port]=data;
-        }
+		}
 		return;
 	case 2:  // cpu write FF02
 		if (ddb)
@@ -261,8 +268,9 @@ void pia1_write(unsigned char data,unsigned char port)
 	case 0: // cpu write FF20
 		if (dda)
 		{
-            vccJoystickStartTandy(data);
-            regb[port]=data;
+			// Start joystick analog ramp with DAC value
+			vccJoystickStartRamp(data);
+			regb[port]=data;
 			CaptureBit((regb[0]&2)>>1);
 			if (GetMuxState() == 0)
 			{

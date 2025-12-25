@@ -47,15 +47,13 @@ inline void ResetAudio() {}
 inline unsigned int PackAudioSample() { return 0; }
 
 // ============================================================================
-// Joystick stubs (was in joystickinput.h)
+// Joystick - now implemented in cutie/joystick.h
 // ============================================================================
 
-inline void vccJoystickStartCCMax() {}
-inline void vccJoystickStartTandy(unsigned char) {}
-inline unsigned short vccJoystickCompute(unsigned char) { return 0; }
-
-// Joystick ramp clock counter (used by CPU for joystick timing)
-extern int JS_Ramp_Clock;
+// Joystick functions are now provided by cutie/joystick.h:
+// - vccJoystickGetButtonBits()
+// - vccJoystickStartRamp()
+// - vccJoystickGetComparison()
 
 // ============================================================================
 // Keyboard stubs (was in keyboard.h)
@@ -212,24 +210,33 @@ inline std::filesystem::path PakGetSystemRomPath() {
     return std::filesystem::current_path() / "system-roms";
 }
 
-// Read from cartridge/pak memory - returns 0xFF (empty slot)
-inline unsigned char PackMem8Read(unsigned short) {
-    return 0xFF;  // No cartridge inserted
+// Cartridge functions - now implemented in cutie/cartridge.h
+// Forward declarations for C-compatible functions
+extern "C" {
+    unsigned char vccCartridgeRead(unsigned short address);
+    void vccCartridgeWritePort(unsigned char port, unsigned char value);
+    unsigned char vccCartridgeReadPort(unsigned char port);
+    unsigned char vccCartridgeIsInserted();
 }
 
-// Read from pak port - returns 0xFF (no cartridge)
-inline unsigned char PakReadPort(unsigned char) {
-    return 0xFF;  // No cartridge inserted
+// Read from cartridge/pak memory
+inline unsigned char PackMem8Read(unsigned short address) {
+    return vccCartridgeRead(address);
 }
 
-// Write to pak port - no-op without cartridge
-inline void PakWritePort(unsigned char, unsigned char) {
-    // No cartridge inserted
+// Read from pak port
+inline unsigned char PakReadPort(unsigned char port) {
+    return vccCartridgeReadPort(port);
 }
 
-// Pak timer tick - called each frame
+// Write to pak port
+inline void PakWritePort(unsigned char port, unsigned char value) {
+    vccCartridgeWritePort(port, value);
+}
+
+// Pak timer tick - called each frame (no-op for simple ROM carts)
 inline void PakTimer() {
-    // No cartridge inserted
+    // ROM cartridges don't need timer ticks
 }
 
 #endif // CUTIE_STUBS_H

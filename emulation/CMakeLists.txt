@@ -7,6 +7,8 @@ add_library(cutie-emulation STATIC
     src/cocoemu.cpp
     src/emulation.cpp
     src/keyboard.cpp
+    src/joystick.cpp
+    src/cartridge.cpp
     # Legacy emulation files - cleaned of Windows dependencies
     mc6809.cpp
     hd6309.cpp

@@ -19,6 +19,8 @@ This file is part of CutieCoCo.
 #include "cutie/emulator.h"
 #include "cutie/framebuffer.h"
 #include "cutie/keyboard.h"
+#include "cutie/joystick.h"
+#include "cutie/cartridge.h"
 #include "cutie/compat.h"  // For EmuState
 #include "cutie/stubs.h"   // For CPUExec
 #include "mc6809.h"
@@ -245,19 +247,13 @@ public:
     }
 
     void setJoystickAxis(int joystick, int axis, int value) override {
-        // TODO: Implement joystick axis handling
-        // The legacy code uses SetStickNumbers() but we need to integrate that
-        (void)joystick;
-        (void)axis;
-        (void)value;
+        auto& joy = getJoystick();
+        joy.setAxis(joystick, axis, value);
     }
 
     void setJoystickButton(int joystick, int button, bool pressed) override {
-        // TODO: Implement joystick button handling
-        // The legacy code handles this through the PIA
-        (void)joystick;
-        (void)button;
-        (void)pressed;
+        auto& joy = getJoystick();
+        joy.setButton(joystick, button, pressed);
     }
 
     // ========================================================================
@@ -296,6 +292,34 @@ public:
             return std::make_pair(nullptr, 0);
         }
         return std::make_pair(m_audioSamples.data(), m_audioSamples.size());
+    }
+
+    // ========================================================================
+    // Cartridge
+    // ========================================================================
+
+    bool loadCartridge(const std::filesystem::path& path) override {
+        auto& cart = getCartridgeManager();
+        if (!cart.load(path)) {
+            m_lastError = cart.getLastError();
+            return false;
+        }
+        // Reset after loading cartridge (many games expect this)
+        reset();
+        return true;
+    }
+
+    void ejectCartridge() override {
+        auto& cart = getCartridgeManager();
+        cart.eject();
+    }
+
+    bool hasCartridge() const override {
+        return getCartridgeManager().hasCartridge();
+    }
+
+    std::string getCartridgeName() const override {
+        return getCartridgeManager().getName();
     }
 
     // ========================================================================

@@ -31,6 +31,9 @@ public:
     bool isEmulationPaused() const;
     float getFps() const;
 
+    // Access to emulator for cartridge operations
+    cutie::CocoEmulator* emulator() { return m_emulator.get(); }
+
     // Size hint for layout
     QSize sizeHint() const override;
     QSize minimumSizeHint() const override;
