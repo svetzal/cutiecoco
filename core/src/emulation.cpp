@@ -1,19 +1,19 @@
 /*
-Copyright 2024 DREAM-VCC Contributors
-This file is part of DREAM-VCC.
+Copyright 2024-2025 CutieCoCo Contributors
+This file is part of CutieCoCo.
 
-    DREAM-VCC is free software: you can redistribute it and/or modify
+    CutieCoCo is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation, either version 3 of the License, or
     (at your option) any later version.
 
-    DREAM-VCC is distributed in the hope that it will be useful,
+    CutieCoCo is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
 
     You should have received a copy of the GNU General Public License
-    along with DREAM-VCC.  If not, see <http://www.gnu.org/licenses/>.
+    along with CutieCoCo.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 #include "dream/emulation.h"

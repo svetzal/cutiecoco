@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-DREAM is a Tandy Color Computer 3 (CoCo 3) emulator, forked from VCC. The project is currently being ported from Windows to cross-platform Qt. It emulates a 128K CoCo 3 with support for memory expansion up to 8192K, both Motorola 6809 and Hitachi 6309 CPUs.
+CutieCoCo is a cross-platform Tandy Color Computer 3 (CoCo 3) emulator built with Qt. It is derived from the VCC (Virtual Color Computer) emulator lineage: VCC → VCCE → DREAM-VCC → CutieCoCo. The emulator supports a 128K CoCo 3 with memory expansion up to 8192K, and both Motorola 6809 and Hitachi 6309 CPUs.
 
 ## Current State: Qt Port In Progress
 
@@ -23,12 +23,12 @@ The `qt` branch contains the cross-platform port. Key changes:
 - Thread-safe frame callback to Qt display widget
 - Stubs for removed Windows functionality (`core/include/dream/stubs.h`)
 - coco3.cpp cleaned of Windows dependencies
+- Keyboard input with character-based mapping (`core/src/keyboard.cpp`)
 
 **What Remains:**
-- Clean remaining legacy files (tcc1014*.cpp, iobus.cpp, pakinterface.cpp)
-- Integrate cleaned emulation files into core library
-- Wire up GIME output to Qt framebuffer
-- Implement keyboard input translation
+- Clean remaining legacy files (pakinterface.cpp)
+- Audio output via Qt
+- Joystick input
 
 ## Issue Tracking
 
@@ -55,10 +55,10 @@ cmake .. -DCMAKE_PREFIX_PATH="$HOME/Qt/6.10.1/macos"
 cmake --build .
 
 # Run (macOS)
-open qt/dream-vcc.app
+open qt/cutiecoco.app
 ```
 
-**Output:** `build/qt/dream-vcc.app` (macOS) or `build/qt/dream-vcc` (Linux)
+**Output:** `build/qt/cutiecoco.app` (macOS) or `build/qt/cutiecoco` (Linux)
 
 ## Architecture
 
@@ -328,6 +328,60 @@ void EmulatorWidget::onFrameReady() {
 }
 ```
 
+## Qt OpenGL and HiDPI Displays
+
+**CRITICAL:** On HiDPI/Retina displays, Qt's `QOpenGLWidget` requires special handling for viewport calculations.
+
+### The Problem
+
+On a 2x Retina display:
+- Widget logical size: 640×480
+- Actual OpenGL framebuffer: 1280×960
+- If you use logical dimensions for `glViewport()`, content renders at 1/4 size in the bottom-left corner
+
+### The Solution
+
+Despite what Qt documentation may suggest, `resizeGL(int w, int h)` receives **logical pixels**, not device pixels. You must multiply by `devicePixelRatio()`:
+
+```cpp
+void EmulatorWidget::resizeGL(int w, int h)
+{
+    // Qt passes logical pixels - multiply by DPR for actual framebuffer size
+    qreal dpr = devicePixelRatio();
+    int deviceWidth = static_cast<int>(w * dpr);
+    int deviceHeight = static_cast<int>(h * dpr);
+
+    // Use device dimensions for all viewport calculations
+    glViewport(0, 0, deviceWidth, deviceHeight);
+}
+```
+
+### Symptoms of Incorrect HiDPI Handling
+
+| Symptom | Cause |
+|---------|-------|
+| Content at 1/4 size in bottom-left corner | Using logical pixels instead of device pixels for viewport |
+| Content at 1/4 size in top-left corner | Same issue + Y-axis flip |
+| Blurry/scaled content | Texture or framebuffer size mismatch |
+
+### Debugging HiDPI Issues
+
+Add temporary debug output to understand the actual dimensions:
+
+```cpp
+fprintf(stderr, "resizeGL: w=%d h=%d, devicePixelRatio=%.2f\n",
+        w, h, devicePixelRatio());
+```
+
+On a 2x Retina display, you should see `devicePixelRatio=2.00`. If `w` and `h` match your expected logical size (e.g., 640×480), you need to multiply them by `devicePixelRatio()` for OpenGL calls.
+
+### Key Points
+
+1. Store device pixel dimensions calculated in `resizeGL()` for use in `paintGL()`
+2. All `glViewport()` calls must use device pixels
+3. Texture uploads (`glTexImage2D`) use the source image dimensions (unaffected by DPR)
+4. The `width()` and `height()` methods always return logical pixels
+
 ## Integrating Legacy Emulation
 
 To integrate a cleaned legacy file:
@@ -465,6 +519,101 @@ The audio system collects samples into a fixed-size buffer (`AudioBuffer[16384]`
 3. Eventually writes past buffer end → crash
 
 **Solution:** Call `SetAudioRate(0)` to disable audio collection until a Qt audio backend is implemented.
+
+## CoCo Keyboard Emulation
+
+**CRITICAL:** The CoCo keyboard matrix wiring is counterintuitive. Getting this wrong causes a perfect row↔column transposition of all keys.
+
+### PIA Keyboard Wiring
+
+The CoCo keyboard connects to PIA0:
+- **Port B ($FF02) = Column STROBE outputs** (directly active low)
+- **Port A ($FF00) = Row RETURN inputs** (directly active low)
+
+This is the **opposite** of what you might expect! Many emulator docs describe it as "rows out, columns in" but the CoCo hardware is wired "columns out, rows in".
+
+### How Keyboard Scanning Works
+
+1. CoCo BASIC writes to $FF02 to select which column(s) to strobe (0 = selected)
+2. CoCo BASIC reads $FF00 to see which rows have a key pressed in those columns (0 = pressed)
+
+For example, to detect 'H' (row 1, column 0):
+1. Output `0xFE` to $FF02 (bit 0 = 0, selecting column 0)
+2. Read $FF00 and check if bit 1 is 0 (row 1 has a key in column 0)
+
+### The Keyboard Matrix
+
+```
+         Col0  Col1  Col2  Col3  Col4  Col5  Col6  Col7
+         ----  ----  ----  ----  ----  ----  ----  ----
+Row 0:    @     A     B     C     D     E     F     G
+Row 1:    H     I     J     K     L     M     N     O
+Row 2:    P     Q     R     S     T     U     V     W
+Row 3:    X     Y     Z     UP   DOWN  LEFT  RIGHT SPACE
+Row 4:    0     1     2     3     4     5     6     7
+Row 5:    8     9     :     ;     ,     -     .     /
+Row 6:   ENT   CLR   BRK   ALT   CTL   F1    F2   SHIFT
+```
+
+### Scan Function Implementation
+
+The scan function must **transpose** the keyboard matrix. We store keys as `m_matrix[row]` with column bits, but when a column is selected, we return which **rows** have that column pressed:
+
+```cpp
+uint8_t Keyboard::scan(uint8_t colMask) const
+{
+    uint8_t result = 0;
+    for (uint8_t col = 0; col < 8; ++col) {
+        if ((colMask & (1 << col)) == 0) {  // Column selected
+            for (uint8_t row = 0; row < 7; ++row) {
+                if (m_matrix[row] & (1 << col)) {
+                    result |= (1 << row);  // Return ROW bits, not column
+                }
+            }
+        }
+    }
+    return ~result;  // Active low
+}
+```
+
+### Symptoms of Incorrect Row/Column Handling
+
+If you implement the scan function wrong (returning columns instead of rows), you'll see a perfect transposition:
+- 'H' (row 1, col 0) → 'A' (row 0, col 1)
+- 'E' (row 0, col 5) → '8' (row 5, col 0)
+- 'L' (row 1, col 4) → '1' (row 4, col 1)
+- 'O' (row 1, col 7) → nothing (row 7 doesn't exist!)
+
+### Character-Based Keyboard Mapping
+
+The CoCo has different shift mappings than a PC keyboard. For example:
+- PC: `"` is Shift+' (apostrophe)
+- CoCo: `"` is Shift+2
+
+Use **character-based mapping** instead of raw key codes for printable characters:
+
+```cpp
+// Map the actual character to CoCo key combination
+switch (ch) {
+    case '"': return {CocoKey::Key2, true};   // Shift+2
+    case '\'': return {CocoKey::Key7, true};  // Shift+7
+    case '*': return {CocoKey::Colon, true};  // Shift+:
+    case '+': return {CocoKey::Semicolon, true}; // Shift+;
+    // etc.
+}
+```
+
+Key implementation points:
+1. Use `event->text()` in Qt to get the actual character produced
+2. Track which keys have shift "added" so you release shift when the key is released
+3. Non-printable keys (arrows, F-keys, modifiers) still use direct key code mapping
+
+### Files Involved
+
+- `core/include/dream/keyboard.h` - CocoKey enum, Keyboard class
+- `core/src/keyboard.cpp` - Matrix storage and scan function
+- `qt/src/emulatorwidget.cpp` - Qt key event → CoCo key mapping
+- `mc6821.cpp` - PIA calls `vccKeyboardGetScan()` when $FF00 is read
 
 ## Troubleshooting
 

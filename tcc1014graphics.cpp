@@ -9860,6 +9860,7 @@ void GimeReset()
 	Hoffset=0;
 	VerticalOffsetRegister=0;
 	MiscReset();
+	SetupDisplay();  // Initialize display centering and mode
 	return;
 }
 

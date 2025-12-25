@@ -11,14 +11,15 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , m_emulatorWidget(new EmulatorWidget(this))
 {
-    setWindowTitle("DREAM-VCC - CoCo 3 Emulator");
+    setWindowTitle("CutieCoCo - CoCo 3 Emulator");
     setCentralWidget(m_emulatorWidget);
 
     createMenus();
     createStatusBar();
 
-    // Set default size (CoCo 3 native resolution scaled 2x)
-    resize(640, 480);
+    // Size window to fit the emulator widget at native resolution
+    // plus room for menu bar and status bar
+    adjustSize();
 
     // Start emulation when window is shown
     QTimer::singleShot(0, this, [this]() {

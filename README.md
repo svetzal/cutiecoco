@@ -1,35 +1,67 @@
-## DREAM - The Tandy Color Computer 3 Emulator
-DREAM is a Tandy Color computer 3 Emulator for Microsoft Windows. It is a fork of [VCC](https://github.com/VCCE/VCC) with the primary goal of improving the overall quality of the code and providing accurate emulation of the original hardware. DREAM, much like VCC, is in very active development and is not considered stable or accurate in ts emulation. In spite of that DREAM does currently work and function quite well with a very broad range of software written for the Tandy Color Computer.
+# CutieCoCo
 
-For DREAM usage, see the User Guide at [DREAM Wiki](https://github.com/ChetSimpson/DREAM-VCC/wiki). The wiki also contains release notes and additional documents. Online documentation may reflect some features not available in earlier versions or that are pre-release.
+A cross-platform Tandy Color Computer 3 (CoCo 3) emulator built with Qt.
 
-DREAM is licensed under the GNU General Public License v3.0. See the [LICENSE](COPYING) file for more details.
+> **Status:** Early development. The emulator boots to BASIC and accepts keyboard input, but many features are still in progress.
 
-## Features
+## About
 
-DREAM emulates a stock 128k CoCo 3 and additional products, including:
+CutieCoCo (pronounced "Cutie CoCo", a play on Qt) is a cross-platform CoCo 3 emulator. It aims to provide accurate emulation of the Tandy Color Computer 3 on macOS, Linux, and Windows.
 
-- **Tandy Multi-Pak Interface**. Includes rour expansion slots selectable from both hardware and software.
-- **Tandy FD-502 Floppy Disk Drive Controller with integrated Becker Port**. Includes Disk Extended BASIC, four configurable virtual disk drives, and a built-in Becker Port for connecting to DriveWire Servers.
-- **Orchestra-90 CC**. A five-voice music sequencer with stereo 8-bit DACs.
-- **Becker Port**. Simple serial device for connecting to DriveWire servers.
-- **Game Master Cartridge**. ROM cartridge with built-in SN-76496 programmable sound generator and paged ROM banks.
-- **Memory Expansions**: Up to 8192k.
-- **CPU Replacement**: Swap the Motorola 6809 CPU with a Hitachi 6309.
+### Features (Current)
 
+- 128K CoCo 3 emulation
+- Boots to Color BASIC
+- Keyboard input
+- 640x480 video output via OpenGL
 
+### Planned Features
 
+- Memory expansion up to 8192K
+- Hitachi 6309 CPU support
+- Floppy disk drive emulation
+- Audio output
+- Joystick support
+- Cartridge/pak support
 
-## Obtaining DREAM
+## Building
 
-Sources and binaries for DREAM can be found at [DREAM Releases](https://github.com/ChetSimpson/DREAM-VCC/releases). It is recommended to use the "latest" release.
+**Requirements:** Qt 6.x, CMake 3.20+
 
-Please be aware that the binaries provided with DREAM releases, including the installers, are not digitally signed. It is likely you will be presented with Windows security warnings when you first run them. Alternatively, you can build the version of your choice from the sources available with the release.
+```bash
+# Configure (adjust Qt path for your system)
+mkdir build && cd build
+cmake .. -DCMAKE_PREFIX_PATH="$HOME/Qt/6.10.1/macos"
 
-Occasionally Virus detection software might flag DREAM binaries due to false positives, even if you build from sources. If you encounter these issues you may be able to add an exception for DREAM in the protection software you are using. Every effort is taken to keep DREAM safe to use but be aware there is no warranty that the instance of DREAM you are running actually is.
+# Build
+cmake --build .
 
-## Building DREAM
-DREAM is written in C++ and can be built using the Microsoft Build Tools or Microsoft Visual Studio 2022 or later.
+# Run (macOS)
+open qt/cutiecoco.app
+```
 
-## Contributing to DREAM
-We welcome contributions that are consistent with our goals. We are working on a more comprehensive guide to provide details, check back in the future.
+You will need a CoCo 3 ROM file (`coco3.rom`) placed in `build/system-roms/`.
+
+## Heritage and Attribution
+
+CutieCoCo is built on the work of many contributors to the CoCo emulation community:
+
+- **VCC** (Virtual Color Computer) - The original Windows CoCo 3 emulator
+- **VCCE** - VCC Extended, community improvements to VCC
+- **DREAM-VCC** - Chet Simpson's fork focusing on code quality and accurate emulation
+
+CutieCoCo uses the platform-independent emulation cores from DREAM-VCC, replacing all Windows-specific code with Qt for cross-platform support.
+
+### Original Authors
+
+The emulation core code retains copyright from the original VCC/VCCE/DREAM-VCC authors. See individual source files for specific attribution.
+
+## License
+
+CutieCoCo is licensed under the **GNU General Public License v3.0** (GPL-3), the same license used by VCC, VCCE, and DREAM-VCC. This ensures the emulator remains free software that anyone can use, study, modify, and share.
+
+See the [COPYING](COPYING) file for the full license text.
+
+## Contributing
+
+This project is in early development. Contributions are welcome, but please be aware that the codebase is actively being restructured.

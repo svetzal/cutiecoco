@@ -1,26 +1,26 @@
-# DREAM-VCC Qt Application
+# CutieCoCo Qt Application
 
-set(DREAM_QT_SOURCES
+set(CUTIECOCO_QT_SOURCES
     src/main.cpp
     src/mainwindow.cpp
     src/emulatorwidget.cpp
 )
 
-set(DREAM_QT_HEADERS
+set(CUTIECOCO_QT_HEADERS
     include/mainwindow.h
     include/emulatorwidget.h
 )
 
-add_executable(dream-vcc
-    ${DREAM_QT_SOURCES}
-    ${DREAM_QT_HEADERS}
+add_executable(cutiecoco
+    ${CUTIECOCO_QT_SOURCES}
+    ${CUTIECOCO_QT_HEADERS}
 )
 
-target_include_directories(dream-vcc PRIVATE
+target_include_directories(cutiecoco PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-target_link_libraries(dream-vcc PRIVATE
+target_link_libraries(cutiecoco PRIVATE
     dream-core
     Qt6::Core
     Qt6::Gui
@@ -32,12 +32,12 @@ target_link_libraries(dream-vcc PRIVATE
 # macOS-specific settings
 if(APPLE)
     # Silence OpenGL deprecation warnings on macOS
-    target_compile_definitions(dream-vcc PRIVATE GL_SILENCE_DEPRECATION)
+    target_compile_definitions(cutiecoco PRIVATE GL_SILENCE_DEPRECATION)
 
-    set_target_properties(dream-vcc PROPERTIES
+    set_target_properties(cutiecoco PROPERTIES
         MACOSX_BUNDLE TRUE
-        MACOSX_BUNDLE_GUI_IDENTIFIER "com.dream.vcc"
-        MACOSX_BUNDLE_BUNDLE_NAME "DREAM-VCC"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "com.cutiecoco.app"
+        MACOSX_BUNDLE_BUNDLE_NAME "CutieCoCo"
         MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
         MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
     )

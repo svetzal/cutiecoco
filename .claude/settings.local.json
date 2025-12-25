@@ -99,10 +99,17 @@
       "Bash(find:*)",
       "Bash(timeout 5 open:*)",
       "Bash(bd stats:*)",
-      "Bash(./qt/dream-vcc.app/Contents/MacOS/dream-vcc:*)",
+      "Bash(./qt/cutiecoco.app/Contents/MacOS/cutiecoco:*)",
       "Bash(timeout:*)",
       "Bash(echo:*)",
-      "Bash(lldb:*)"
+      "Bash(lldb:*)",
+      "Bash(xxd:*)",
+      "Bash(git remote:*)",
+      "Bash(git remote rename:*)",
+      "Bash(git remote add:*)",
+      "Bash(git push:*)",
+      "Bash(ln:*)",
+      "Bash(git branch:*)"
     ]
   }
 }

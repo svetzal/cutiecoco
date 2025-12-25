@@ -1,19 +1,19 @@
 /*
-Copyright 2024 DREAM-VCC Contributors
-This file is part of DREAM-VCC.
+Copyright 2024-2025 CutieCoCo Contributors
+This file is part of CutieCoCo.
 
-    DREAM-VCC is free software: you can redistribute it and/or modify
+    CutieCoCo is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation, either version 3 of the License, or
     (at your option) any later version.
 
-    DREAM-VCC is distributed in the hope that it will be useful,
+    CutieCoCo is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
 
     You should have received a copy of the GNU General Public License
-    along with DREAM-VCC.  If not, see <http://www.gnu.org/licenses/>.
+    along with CutieCoCo.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 #include "dream/keyboard.h"
@@ -62,22 +62,37 @@ void Keyboard::releaseAll()
     m_matrix.fill(0);
 }
 
-uint8_t Keyboard::scan(uint8_t rowMask) const
+uint8_t Keyboard::scan(uint8_t colMask) const
 {
     std::lock_guard<std::mutex> lock(m_mutex);
 
-    // rowMask is active-low: bits that are 0 indicate selected rows
-    // We OR together the columns for all selected rows
+    // CoCo keyboard matrix wiring:
+    // - PB0-PB7 ($FF02) = Column strobe outputs (active low)
+    // - PA0-PA6 ($FF00) = Row return inputs (active low)
+    //
+    // colMask: bits that are 0 indicate selected columns
+    // Return: row bits (0 = row has key pressed in selected column)
+    //
+    // We store keys as m_matrix[row] with column bits set.
+    // When a column is selected, we need to return which rows
+    // have that column pressed - this is a matrix transpose.
+
     uint8_t result = 0;
 
-    for (uint8_t row = 0; row < 7; ++row) {
-        // Check if this row is selected (bit is 0 in mask)
-        if ((rowMask & (1 << row)) == 0) {
-            result |= m_matrix[row];
+    for (uint8_t col = 0; col < 8; ++col) {
+        // Check if this column is selected (bit is 0 in mask)
+        if ((colMask & (1 << col)) == 0) {
+            // Find all rows with this column pressed
+            for (uint8_t row = 0; row < 7; ++row) {
+                if (m_matrix[row] & (1 << col)) {
+                    result |= (1 << row);
+                }
+            }
         }
     }
 
-    return result;
+    // Return inverted (active-low): 0 = row has key, 1 = row empty
+    return ~result;
 }
 
 bool Keyboard::isPressed(CocoKey key) const
@@ -100,7 +115,7 @@ Keyboard& getKeyboard()
 } // namespace dream
 
 // C-compatible function for mc6821.cpp
-unsigned char vccKeyboardGetScan(unsigned char rowMask)
+unsigned char vccKeyboardGetScan(unsigned char colMask)
 {
-    return dream::getKeyboard().scan(rowMask);
+    return dream::getKeyboard().scan(colMask);
 }

@@ -1,7 +1,7 @@
 #ifndef DREAM_STUBS_H
 #define DREAM_STUBS_H
 /*
-Copyright 2024 DREAM-VCC Contributors
+Copyright 2024-2025 CutieCoCo Contributors
 Stub implementations for removed Windows-specific functionality.
 
 These stubs allow the emulation code to compile while the full

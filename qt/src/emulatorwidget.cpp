@@ -11,53 +11,74 @@ namespace {
     // CoCo 3 aspect ratio (640x480 = 4:3)
     constexpr float ASPECT_RATIO = 4.0f / 3.0f;
 
-    // Map Qt key codes to CoCo keys
-    // This provides a "natural" mapping where keys match their keycap labels
+    // A CoCo key combination (primary key + optional shift)
+    struct CocoKeyCombo {
+        dream::CocoKey key;
+        bool withShift;
+    };
+
+    // Map printable characters to CoCo key combinations
+    // This handles the translation between PC keyboard layout and CoCo layout
+    // For example: PC " (Shift+') -> CoCo Shift+2
+    std::optional<CocoKeyCombo> mapCharToCoco(QChar ch)
+    {
+        using K = dream::CocoKey;
+
+        // Lowercase letters -> just the letter key
+        if (ch >= 'a' && ch <= 'z') {
+            return CocoKeyCombo{static_cast<K>(static_cast<int>(K::A) + (ch.unicode() - 'a')), false};
+        }
+
+        // Uppercase letters -> letter key + shift
+        if (ch >= 'A' && ch <= 'Z') {
+            return CocoKeyCombo{static_cast<K>(static_cast<int>(K::A) + (ch.unicode() - 'A')), true};
+        }
+
+        // Numbers
+        if (ch >= '0' && ch <= '9') {
+            return CocoKeyCombo{static_cast<K>(static_cast<int>(K::Key0) + (ch.unicode() - '0')), false};
+        }
+
+        // CoCo shifted number keys produce different symbols than PC
+        switch (ch.unicode()) {
+            // Basic punctuation (unshifted on CoCo)
+            case '@': return CocoKeyCombo{K::At, false};
+            case ':': return CocoKeyCombo{K::Colon, false};
+            case ';': return CocoKeyCombo{K::Semicolon, false};
+            case ',': return CocoKeyCombo{K::Comma, false};
+            case '-': return CocoKeyCombo{K::Minus, false};
+            case '.': return CocoKeyCombo{K::Period, false};
+            case '/': return CocoKeyCombo{K::Slash, false};
+            case ' ': return CocoKeyCombo{K::Space, false};
+
+            // Shifted punctuation on CoCo
+            case '!': return CocoKeyCombo{K::Key1, true};   // Shift+1
+            case '"': return CocoKeyCombo{K::Key2, true};   // Shift+2
+            case '#': return CocoKeyCombo{K::Key3, true};   // Shift+3
+            case '$': return CocoKeyCombo{K::Key4, true};   // Shift+4
+            case '%': return CocoKeyCombo{K::Key5, true};   // Shift+5
+            case '&': return CocoKeyCombo{K::Key6, true};   // Shift+6
+            case '\'': return CocoKeyCombo{K::Key7, true};  // Shift+7 (apostrophe)
+            case '(': return CocoKeyCombo{K::Key8, true};   // Shift+8
+            case ')': return CocoKeyCombo{K::Key9, true};   // Shift+9
+            case '*': return CocoKeyCombo{K::Colon, true};  // Shift+:
+            case '+': return CocoKeyCombo{K::Semicolon, true}; // Shift+;
+            case '<': return CocoKeyCombo{K::Comma, true};  // Shift+,
+            case '=': return CocoKeyCombo{K::Minus, true};  // Shift+-
+            case '>': return CocoKeyCombo{K::Period, true}; // Shift+.
+            case '?': return CocoKeyCombo{K::Slash, true};  // Shift+/
+
+            default: return std::nullopt;
+        }
+    }
+
+    // Map Qt key codes to CoCo keys for non-printable keys
+    // (arrows, function keys, modifiers, etc.)
     std::optional<dream::CocoKey> mapQtKeyToCoco(int qtKey)
     {
         using K = dream::CocoKey;
 
         switch (qtKey) {
-            // Letters
-            case Qt::Key_A: return K::A;
-            case Qt::Key_B: return K::B;
-            case Qt::Key_C: return K::C;
-            case Qt::Key_D: return K::D;
-            case Qt::Key_E: return K::E;
-            case Qt::Key_F: return K::F;
-            case Qt::Key_G: return K::G;
-            case Qt::Key_H: return K::H;
-            case Qt::Key_I: return K::I;
-            case Qt::Key_J: return K::J;
-            case Qt::Key_K: return K::K;
-            case Qt::Key_L: return K::L;
-            case Qt::Key_M: return K::M;
-            case Qt::Key_N: return K::N;
-            case Qt::Key_O: return K::O;
-            case Qt::Key_P: return K::P;
-            case Qt::Key_Q: return K::Q;
-            case Qt::Key_R: return K::R;
-            case Qt::Key_S: return K::S;
-            case Qt::Key_T: return K::T;
-            case Qt::Key_U: return K::U;
-            case Qt::Key_V: return K::V;
-            case Qt::Key_W: return K::W;
-            case Qt::Key_X: return K::X;
-            case Qt::Key_Y: return K::Y;
-            case Qt::Key_Z: return K::Z;
-
-            // Numbers
-            case Qt::Key_0: return K::Key0;
-            case Qt::Key_1: return K::Key1;
-            case Qt::Key_2: return K::Key2;
-            case Qt::Key_3: return K::Key3;
-            case Qt::Key_4: return K::Key4;
-            case Qt::Key_5: return K::Key5;
-            case Qt::Key_6: return K::Key6;
-            case Qt::Key_7: return K::Key7;
-            case Qt::Key_8: return K::Key8;
-            case Qt::Key_9: return K::Key9;
-
             // Arrow keys
             case Qt::Key_Up: return K::Up;
             case Qt::Key_Down: return K::Down;
@@ -67,22 +88,12 @@ namespace {
             // Special keys
             case Qt::Key_Return:
             case Qt::Key_Enter: return K::Enter;
-            case Qt::Key_Space: return K::Space;
             case Qt::Key_Shift: return K::Shift;
             case Qt::Key_Control: return K::Ctrl;
             case Qt::Key_Alt: return K::Alt;
             case Qt::Key_Escape: return K::Break;
             case Qt::Key_Backspace: return K::Left;  // Backspace acts as left arrow
             case Qt::Key_Home: return K::Clear;
-
-            // Punctuation
-            case Qt::Key_At: return K::At;
-            case Qt::Key_Colon: return K::Colon;
-            case Qt::Key_Semicolon: return K::Semicolon;
-            case Qt::Key_Comma: return K::Comma;
-            case Qt::Key_Minus: return K::Minus;
-            case Qt::Key_Period: return K::Period;
-            case Qt::Key_Slash: return K::Slash;
 
             // Function keys
             case Qt::Key_F1: return K::F1;
@@ -126,6 +137,18 @@ EmulatorWidget::~EmulatorWidget()
         glDeleteTextures(1, &m_texture);
     }
     doneCurrent();
+}
+
+QSize EmulatorWidget::sizeHint() const
+{
+    // Return the native framebuffer size as the preferred size
+    return QSize(dream::FRAMEBUFFER_WIDTH, dream::FRAMEBUFFER_HEIGHT);
+}
+
+QSize EmulatorWidget::minimumSizeHint() const
+{
+    // Minimum size is half the native resolution
+    return QSize(dream::FRAMEBUFFER_WIDTH / 2, dream::FRAMEBUFFER_HEIGHT / 2);
 }
 
 void EmulatorWidget::startEmulation()
@@ -224,21 +247,27 @@ void EmulatorWidget::initializeGL()
 
 void EmulatorWidget::resizeGL(int w, int h)
 {
-    // Calculate aspect-ratio-preserving viewport
-    float windowAspect = static_cast<float>(w) / static_cast<float>(h);
+    // Qt passes logical pixels to resizeGL, but OpenGL needs device pixels
+    // Multiply by devicePixelRatio to get actual framebuffer dimensions
+    qreal dpr = devicePixelRatio();
+    m_deviceWidth = static_cast<int>(w * dpr);
+    m_deviceHeight = static_cast<int>(h * dpr);
+
+    // Calculate aspect-ratio-preserving viewport in device pixels
+    float windowAspect = static_cast<float>(m_deviceWidth) / static_cast<float>(m_deviceHeight);
 
     if (windowAspect > ASPECT_RATIO) {
         // Window is wider than content - pillarbox (bars on sides)
-        m_viewportH = h;
-        m_viewportW = static_cast<int>(h * ASPECT_RATIO);
-        m_viewportX = (w - m_viewportW) / 2;
+        m_viewportH = m_deviceHeight;
+        m_viewportW = static_cast<int>(m_deviceHeight * ASPECT_RATIO);
+        m_viewportX = (m_deviceWidth - m_viewportW) / 2;
         m_viewportY = 0;
     } else {
         // Window is taller than content - letterbox (bars on top/bottom)
-        m_viewportW = w;
-        m_viewportH = static_cast<int>(w / ASPECT_RATIO);
+        m_viewportW = m_deviceWidth;
+        m_viewportH = static_cast<int>(m_deviceWidth / ASPECT_RATIO);
         m_viewportX = 0;
-        m_viewportY = (h - m_viewportH) / 2;
+        m_viewportY = (m_deviceHeight - m_viewportH) / 2;
     }
 
     // Set the viewport for rendering
@@ -248,7 +277,8 @@ void EmulatorWidget::resizeGL(int w, int h)
 void EmulatorWidget::paintGL()
 {
     // Clear the entire window (including letterbox/pillarbox areas)
-    glViewport(0, 0, width(), height());
+    // Use device pixels (physical pixels on HiDPI displays)
+    glViewport(0, 0, m_deviceWidth, m_deviceHeight);
     glClear(GL_COLOR_BUFFER_BIT);
 
     // Set viewport for content with aspect ratio preservation
@@ -288,13 +318,39 @@ void EmulatorWidget::keyPressEvent(QKeyEvent *event)
         return;
     }
 
+    auto& kb = dream::getKeyboard();
+
+    // First, try non-printable key mapping (arrows, modifiers, function keys)
     auto cocoKey = mapQtKeyToCoco(event->key());
     if (cocoKey) {
-        dream::getKeyboard().keyDown(*cocoKey);
+        kb.keyDown(*cocoKey);
         event->accept();
-    } else {
-        QOpenGLWidget::keyPressEvent(event);
+        return;
     }
+
+    // Try character-based mapping for printable characters
+    QString text = event->text();
+    if (!text.isEmpty()) {
+        auto combo = mapCharToCoco(text[0]);
+        if (combo) {
+            // Track what we're pressing so we can release it properly
+            ActiveKeyInfo info;
+            info.cocoKey = static_cast<int>(combo->key);
+            info.addedShift = combo->withShift;
+
+            // Press shift first if needed
+            if (combo->withShift) {
+                kb.keyDown(dream::CocoKey::Shift);
+            }
+            kb.keyDown(combo->key);
+
+            m_activeCharKeys[event->key()] = info;
+            event->accept();
+            return;
+        }
+    }
+
+    QOpenGLWidget::keyPressEvent(event);
 }
 
 void EmulatorWidget::keyReleaseEvent(QKeyEvent *event)
@@ -305,11 +361,31 @@ void EmulatorWidget::keyReleaseEvent(QKeyEvent *event)
         return;
     }
 
+    auto& kb = dream::getKeyboard();
+
+    // First, try non-printable key mapping
     auto cocoKey = mapQtKeyToCoco(event->key());
     if (cocoKey) {
-        dream::getKeyboard().keyUp(*cocoKey);
+        kb.keyUp(*cocoKey);
         event->accept();
-    } else {
-        QOpenGLWidget::keyReleaseEvent(event);
+        return;
     }
+
+    // Check if this was a character-based key press
+    auto it = m_activeCharKeys.find(event->key());
+    if (it != m_activeCharKeys.end()) {
+        // Release the key
+        kb.keyUp(static_cast<dream::CocoKey>(it->second.cocoKey));
+
+        // Release shift if we added it
+        if (it->second.addedShift) {
+            kb.keyUp(dream::CocoKey::Shift);
+        }
+
+        m_activeCharKeys.erase(it);
+        event->accept();
+        return;
+    }
+
+    QOpenGLWidget::keyReleaseEvent(event);
 }

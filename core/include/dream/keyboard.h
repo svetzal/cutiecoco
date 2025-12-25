@@ -1,21 +1,21 @@
 #ifndef DREAM_KEYBOARD_H
 #define DREAM_KEYBOARD_H
 /*
-Copyright 2024 DREAM-VCC Contributors
-This file is part of DREAM-VCC.
+Copyright 2024-2025 CutieCoCo Contributors
+This file is part of CutieCoCo.
 
-    DREAM-VCC is free software: you can redistribute it and/or modify
+    CutieCoCo is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation, either version 3 of the License, or
     (at your option) any later version.
 
-    DREAM-VCC is distributed in the hope that it will be useful,
+    CutieCoCo is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
 
     You should have received a copy of the GNU General Public License
-    along with DREAM-VCC.  If not, see <http://www.gnu.org/licenses/>.
+    along with CutieCoCo.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 #include <cstdint>
@@ -89,15 +89,19 @@ public:
     /**
      * @brief Scan the keyboard matrix
      *
-     * This function is called by the PIA emulation. The rowMask parameter
-     * indicates which rows are being scanned (active low - 0 bits indicate
-     * selected rows). Returns a byte with bits set for pressed keys in
-     * the selected rows.
+     * This function is called by the PIA emulation. The CoCo keyboard is wired:
+     * - PB0-PB7 ($FF02) = Column strobe outputs (active low)
+     * - PA0-PA6 ($FF00) = Row return inputs (active low)
      *
-     * @param rowMask Row selection mask (inverted - 0 = selected)
-     * @return Column bits for pressed keys in selected rows
+     * The colMask parameter indicates which columns are being strobed
+     * (active low - 0 bits indicate selected columns). Returns a byte
+     * with bits cleared (0) for rows that have a key pressed in the
+     * selected columns.
+     *
+     * @param colMask Column selection mask (inverted - 0 = selected)
+     * @return Row bits for pressed keys in selected columns (inverted)
      */
-    uint8_t scan(uint8_t rowMask) const;
+    uint8_t scan(uint8_t colMask) const;
 
     /**
      * @brief Check if a specific key is pressed
@@ -127,7 +131,7 @@ Keyboard& getKeyboard();
 
 // C-compatible function for legacy code (mc6821.cpp)
 extern "C" {
-    unsigned char vccKeyboardGetScan(unsigned char rowMask);
+    unsigned char vccKeyboardGetScan(unsigned char colMask);
 }
 
 #endif // DREAM_KEYBOARD_H

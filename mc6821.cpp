@@ -105,6 +105,7 @@ Bit 0 CART FIRQ 0 = FIRQ disabled 1 = enabled
 #include <cstdint>
 #include "defines.h"
 #include "dream/stubs.h"
+#include "dream/keyboard.h"
 #include "mc6821.h"
 #include "hd6309.h"
 #include "tcc1014graphics.h"
@@ -113,8 +114,8 @@ Bit 0 CART FIRQ 0 = FIRQ disabled 1 = enabled
 // pakinterface.h removed - not needed here
 #include "vcc/utils/logger.h"
 
-// Stubs for removed keyboard/joystick/cassette functionality
-static unsigned char vccKeyboardGetScan(unsigned char) { return 0; }
+// Stubs for removed joystick/cassette functionality
+// vccKeyboardGetScan is now provided by dream/keyboard.h
 static unsigned short get_joyStick_input(int) { return 0; }
 static unsigned char SetCasSample(unsigned char) { return 0; }
 

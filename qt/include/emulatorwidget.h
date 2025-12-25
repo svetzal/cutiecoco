@@ -6,6 +6,7 @@
 #include <QTimer>
 #include <memory>
 #include <mutex>
+#include <unordered_map>
 
 namespace dream {
 class EmulationThread;
@@ -28,6 +29,10 @@ public:
     bool isEmulationRunning() const;
     bool isEmulationPaused() const;
     float getFps() const;
+
+    // Size hint for layout
+    QSize sizeHint() const override;
+    QSize minimumSizeHint() const override;
 
 signals:
     void frameReady();
@@ -66,6 +71,18 @@ private:
     int m_viewportY = 0;
     int m_viewportW = 0;
     int m_viewportH = 0;
+
+    // Device pixel dimensions (physical pixels on HiDPI displays)
+    int m_deviceWidth = 0;
+    int m_deviceHeight = 0;
+
+    // Track active character-based key presses
+    // Maps Qt key code to the CoCo keys we pressed (key + whether shift was added)
+    struct ActiveKeyInfo {
+        int cocoKey;      // dream::CocoKey value
+        bool addedShift;  // Did we add shift for this key?
+    };
+    std::unordered_map<int, ActiveKeyInfo> m_activeCharKeys;
 };
 
 #endif // EMULATORWIDGET_H
