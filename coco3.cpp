@@ -174,6 +174,9 @@ void DebugDrawAudio()
 float RenderFrame (SystemState *RFState)
 {
 	static unsigned int FrameCounter=0;
+	static bool firstFrame = true;
+
+	if (firstFrame) fprintf(stderr, "RenderFrame: starting first frame\n");
 
 	// once per frame
 	LastMotorState = GetMotorState();
@@ -187,15 +190,19 @@ float RenderFrame (SystemState *RFState)
 		BlinkPhase = 0;
 	}
 
+	if (firstFrame) fprintf(stderr, "RenderFrame: VSYNC(0)\n");
 	// VSYNC goes Low
 	VSYNC(0);
 
+	if (firstFrame) fprintf(stderr, "RenderFrame: first HLINE loop\n");
 	// Four lines of blank during VSYNC low
 	for (RFState->LineCounter = 0; RFState->LineCounter < 4; RFState->LineCounter++)
 	{
+		if (firstFrame) fprintf(stderr, "RenderFrame: HLINE %d\n", RFState->LineCounter);
 		HLINE();
 	}
 
+	if (firstFrame) fprintf(stderr, "RenderFrame: VSYNC(1)\n");
 	// VSYNC goes High
 	VSYNC(1);
 
