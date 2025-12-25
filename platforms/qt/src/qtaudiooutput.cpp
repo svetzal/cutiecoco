@@ -62,9 +62,9 @@ bool QtAudioOutput::init(uint32_t sampleRate)
     // Create audio sink
     m_audioSink = std::make_unique<QAudioSink>(audioDevice, m_format);
 
-    // Configure buffer size for low latency
-    // Use approximately 4 frames worth of audio (~67ms at 60 Hz)
-    int bufferSize = static_cast<int>(sampleRate / 60 * 4 * sizeof(int16_t));
+    // Configure buffer size - larger buffer reduces underruns at cost of latency
+    // Use approximately 200ms worth of audio for smooth playback
+    int bufferSize = static_cast<int>(sampleRate / 5 * sizeof(int16_t));  // 200ms
     m_audioSink->setBufferSize(bufferSize);
 
     // Start the audio sink and get the IO device for writing
@@ -74,6 +74,13 @@ bool QtAudioOutput::init(uint32_t sampleRate)
         m_audioSink.reset();
         return false;
     }
+
+    // Pre-fill half the audio buffer with silence to prevent startup underrun
+    // but leave room for incoming samples
+    size_t silenceSamples = (bufferSize / sizeof(int16_t)) / 2;
+    std::vector<int16_t> silence(silenceSamples, 0);
+    m_audioDevice->write(reinterpret_cast<const char*>(silence.data()),
+                         static_cast<qint64>(silence.size() * sizeof(int16_t)));
 
     // Set up fade-in: ~100ms to avoid startup crackle
     m_fadeInSamples = sampleRate / 10;  // 100ms worth of samples
@@ -126,11 +133,10 @@ void QtAudioOutput::submitSamples(const int16_t* samples, size_t count)
         outputSamples = m_fadeBuffer.data();
     }
 
-    // Write samples to the audio device
+    // Write samples directly - no resampling
+    // Throttling is handled by the caller via getBufferFillLevel()
     const char* data = reinterpret_cast<const char*>(outputSamples);
     qint64 bytesToWrite = static_cast<qint64>(count * sizeof(int16_t));
-
-    // Write as much as possible without blocking excessively
     m_audioDevice->write(data, bytesToWrite);
 }
 
@@ -143,6 +149,17 @@ size_t QtAudioOutput::getQueuedSampleCount() const
     // Get bytes that can still fit in the buffer
     qsizetype bytesFree = m_audioSink->bytesFree();
     return static_cast<size_t>(bytesFree / sizeof(int16_t));
+}
+
+float QtAudioOutput::getBufferFillLevel() const
+{
+    if (!m_initialized || !m_audioSink) {
+        return 0.0f;
+    }
+
+    qsizetype bytesFree = m_audioSink->bytesFree();
+    qsizetype bufSize = m_audioSink->bufferSize();
+    return static_cast<float>(bufSize - bytesFree) / static_cast<float>(bufSize);
 }
 
 uint32_t QtAudioOutput::getSampleRate() const

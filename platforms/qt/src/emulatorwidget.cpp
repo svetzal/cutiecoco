@@ -150,7 +150,9 @@ namespace {
     constexpr int FRAMEBUFFER_HEIGHT = 480;
 
     // Target frame interval in milliseconds (~59.923 Hz)
-    constexpr int FRAME_INTERVAL_MS = 16;  // ~62.5 Hz, close enough for display
+    // CoCo runs at ~59.923 Hz (NTSC). Use 16ms (~62.5 Hz) and let
+    // adaptive audio resampling handle the rate mismatch
+    constexpr int FRAME_INTERVAL_MS = 16;
 }
 
 EmulatorWidget::EmulatorWidget(QWidget *parent)
@@ -280,6 +282,18 @@ void EmulatorWidget::onEmulationTick()
 {
     if (!m_running || m_paused || !m_emulator) {
         return;
+    }
+
+    // VCC-style throttling: skip frame if audio buffer is too full
+    // This naturally synchronizes emulation speed with audio playback
+    if (m_audioOutput) {
+        float fillLevel = m_audioOutput->getBufferFillLevel();
+
+        // If buffer is more than 70% full, skip this frame entirely
+        // This throttles emulation to match audio consumption rate
+        if (fillLevel > 0.70f) {
+            return;
+        }
     }
 
     // Run one frame of emulation

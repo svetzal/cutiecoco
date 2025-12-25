@@ -44,6 +44,9 @@ public:
     size_t getQueuedSampleCount() const override;
     uint32_t getSampleRate() const override;
 
+    // Buffer state for throttling
+    float getBufferFillLevel() const;
+
 private:
     std::unique_ptr<QAudioSink> m_audioSink;
     QIODevice* m_audioDevice = nullptr;  // Owned by QAudioSink
@@ -55,6 +58,9 @@ private:
     uint32_t m_fadeInSamples = 0;      // Total samples for fade-in period
     uint32_t m_samplesProcessed = 0;   // Samples processed so far
     std::vector<int16_t> m_fadeBuffer; // Temp buffer for fade processing
+
+    // Adaptive resampling buffer
+    std::vector<int16_t> m_resampleBuffer;
 };
 
 #endif // QTAUDIOOUTPUT_H
