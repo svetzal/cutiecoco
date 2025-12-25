@@ -17,6 +17,7 @@ This file is part of VCC (Virtual Color Computer).
 */
 
 #include <cstdio>
+#include <algorithm>
 #include "defines.h"
 #include "mc6809.h"
 #include "mc6809defs.h"

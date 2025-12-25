@@ -29,6 +29,11 @@ target_link_libraries(cutiecoco PRIVATE
     Qt6::OpenGLWidgets
 )
 
+# Windows-specific settings
+if(WIN32)
+    target_link_libraries(cutiecoco PRIVATE opengl32)
+endif()
+
 # macOS-specific settings
 if(APPLE)
     # Silence OpenGL deprecation warnings on macOS
