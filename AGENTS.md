@@ -113,15 +113,38 @@ The `core/include/dream/compat.h` header provides VCC-compatible types so legacy
 
 | File | Purpose | Cleanup Status |
 |------|---------|----------------|
-| `mc6809.cpp` | Motorola 6809 CPU | Cleaned |
-| `hd6309.cpp` | Hitachi 6309 CPU | Cleaned |
-| `mc6821.cpp/h` | PIA (I/O ports) | Cleaned |
-| `coco3.cpp` | System emulation loop | Cleaned |
-| `tcc1014graphics.cpp` | GIME video | Needs cleanup |
-| `tcc1014mmu.cpp` | Memory management | Needs cleanup |
-| `tcc1014registers.cpp` | GIME registers | Needs cleanup |
-| `iobus.cpp` | I/O bus | Needs cleanup |
-| `pakinterface.cpp` | Cartridge interface | Needs cleanup |
+| `mc6809.cpp/h` | Motorola 6809 CPU | Cleaned (not yet integrated) |
+| `hd6309.cpp/h` | Hitachi 6309 CPU | Cleaned (not yet integrated) |
+| `mc6821.cpp/h` | PIA (I/O ports) | Cleaned (has real implementations that conflict with stubs) |
+| `coco3.cpp` | System emulation loop | Cleaned (not yet integrated) |
+| `tcc1014graphics.cpp` | GIME video | Cleaned |
+| `tcc1014mmu.cpp/h` | Memory management | Cleaned |
+| `tcc1014registers.cpp` | GIME registers | Cleaned |
+| `iobus.cpp` | I/O bus | Cleaned |
+| `pakinterface.cpp` | Cartridge interface | Heavy Windows deps, needs major work |
+
+### Emulation File Dependencies
+
+The emulation files have deep interconnections. Understanding these is critical before integration:
+
+```
+coco3.cpp
+├── CPUExec (function pointer to MC6809Exec or HD6309Exec)
+├── mc6821.cpp (PIA - defines GetMuxState, GetDACSample, etc.)
+├── tcc1014*.cpp (GIME)
+└── pakinterface.cpp (cartridge)
+
+mc6821.cpp
+├── CPUAssertInterupt/CPUDeAssertInterupt (from CPU files)
+├── vccJoystickStart* (joystick input - needs stubs)
+├── Motor() (cassette - needs stub)
+└── PackAudioSample() (from pakinterface)
+
+pakinterface.cpp
+├── vcc/ui/menu/* (deleted - needs major refactoring)
+├── vcc/utils/cartridge_loader (may work)
+└── Windows DLL loading (needs replacement)
+```
 
 ## Cleaning Legacy Files
 
@@ -142,6 +165,8 @@ When cleaning a legacy file of Windows dependencies:
    #include "DirectDrawInterface.h" // Deleted
    #include "Vcc.h"           // Deleted
    #include "throttle.h"      // Windows timing, deleted
+   #include "pakinterface.h"  // Heavy deps, use stubs instead
+   #include "OpDecoder.h"     // Debugger, not needed for emulation
 
    // Add this for stub implementations:
    #include "dream/stubs.h"
@@ -155,6 +180,7 @@ When cleaning a legacy file of Windows dependencies:
    - `HANDLE` → `FILE*` or appropriate type
    - `HWND`, `HINSTANCE` → `void*` (in SystemState)
    - `_inline` → `inline` (MSVC-specific keyword)
+   - `__fastcall` → remove (MSVC calling convention)
 
 4. **Remove MSVC pragmas:**
    ```cpp
@@ -162,28 +188,68 @@ When cleaning a legacy file of Windows dependencies:
    #pragma warning( disable : 4800 )
    ```
 
-5. **Use stubs.h for removed functionality:**
+5. **Fix headers before cpp files:**
+   Headers often need includes added. Common missing includes:
+   ```cpp
+   #include <vector>           // For std::vector in function signatures
+   #include "dream/compat.h"   // For VCC::CPUState
+   ```
+
+6. **Use stubs.h for removed functionality:**
    The `core/include/dream/stubs.h` provides inline stubs for functions from deleted modules:
    - Cassette: `GetMotorState()`, `FlushCassetteBuffer()`, `GetCasSample()`, etc.
-   - Audio: `GetFreeBlockCount()`, `FlushAudioBuffer()`, `GetDACSample()`, etc.
+   - Audio: `GetFreeBlockCount()`, `FlushAudioBuffer()`, `GetDACSample()`, `AUDIO_RATE`
    - Display: `LockScreen()`, `UnlockScreen()`, `GetMem()`
    - Throttle: `CalculateFPS()`, `StartRender()`, `EndRender()`
+   - Config: `GetUseCustomSystemRom()`, `GetCustomSystemRomPath()`
+   - Pak: `PakGetSystemRomPath()`, `PackMem8Read()`, `PakReadPort()`, `PakWritePort()`, `PakTimer()`
+   - CPU: `CPUExec` function pointer (defaults to stub, set to MC6809Exec/HD6309Exec)
+   - Windows API: `MessageBox()` (prints to stderr)
 
    If you need a stub that doesn't exist, add it to stubs.h with a sensible default value.
 
-6. **Use C++ standard headers:**
+7. **Use C++ standard headers:**
    - `<stdio.h>` → `<cstdio>`
    - `<stdlib.h>` → `<cstdlib>`
    - `<string.h>` → `<cstring>`
    - `<math.h>` → `<cmath>`
 
-7. **Stub Windows-only features entirely:**
+8. **Stub Windows-only features entirely:**
    Functions like clipboard paste (`PasteText`, `CopyText`) should be stubbed with TODO comments:
    ```cpp
    void PasteText() {
        // TODO: Implement with Qt clipboard
    }
    ```
+
+### Stub Conflicts
+
+**IMPORTANT:** Some files define real implementations that conflict with stubs. When integrating:
+
+- `mc6821.cpp` defines `GetDACSample()`, `GetCasSample()`, `SetCassetteSample()`, `GetMuxState()`
+- These conflict with inline stubs in `stubs.h`
+
+**Solution options:**
+1. Remove conflicting stubs from `stubs.h` when integrating the real file
+2. Use `#ifndef` guards around stubs
+3. Reorganize stubs into categories that can be selectively included
+
+### VCC::CPUState vs dream::CPUState
+
+The `VCC::CPUState` is an alias to `dream::CPUState` (defined in `types.h`). When adding CPU register fields:
+- Add to `dream::CPUState` in `core/include/dream/types.h`
+- Do NOT add a separate struct in `compat.h` (will conflict)
+
+Current CPUState fields:
+```cpp
+struct CPUState {
+    uint16_t PC, X, Y, U, S, DP, D;
+    uint8_t A, B, CC, E, F;
+    uint8_t MD;           // 6309 mode register
+    uint16_t V;           // 6309 V register
+    bool IsNative6309;    // True if in native 6309 mode
+};
+```
 
 ## libcommon
 
@@ -280,4 +346,60 @@ To integrate a cleaned legacy file:
 
 3. The legacy code uses globals (`EmuState`) defined in `core/src/core.cpp`
 
-4. Test compilation before integrating more files - errors cascade quickly
+4. **Test compilation after EACH file** - errors cascade quickly
+
+### Integration Order (Recommended)
+
+Due to dependencies, integrate files in this order:
+
+1. **CPU files first** (`mc6809.cpp`, `hd6309.cpp`)
+   - These are relatively self-contained
+   - Need: `CPUAssertInterupt` stubs (add to stubs.h or compat.h)
+
+2. **GIME files** (`tcc1014mmu.cpp`, `tcc1014registers.cpp`, `tcc1014graphics.cpp`)
+   - Depend on CPU for interrupt assertions
+   - Graphics file is large but mostly self-contained rendering code
+
+3. **I/O files** (`iobus.cpp`, `mc6821.cpp`)
+   - PIA has joystick/cassette dependencies to stub
+   - **WARNING:** mc6821.cpp conflicts with stubs - resolve before adding
+
+4. **System loop** (`coco3.cpp`)
+   - Depends on all of the above
+   - Uses `CPUExec` function pointer (defined in core.cpp)
+
+5. **Cartridge** (`pakinterface.cpp`) - last, needs major refactoring
+
+### Common Integration Errors
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `no template named 'vector'` | Header missing `#include <vector>` | Add include to the .h file |
+| `redefinition of 'FunctionName'` | Stub conflicts with real impl | Remove stub or use guards |
+| `use of undeclared identifier` | Missing stub or include | Add to stubs.h or add include |
+| `no member named 'X' in 'CPUState'` | Missing field in types.h | Add to dream::CPUState |
+| `'__declspec' attributes not enabled` | Windows-only export macro | Check libcommon/include/vcc/detail/exports.h has platform guards |
+
+## Troubleshooting
+
+### Build Fails After Adding File
+
+1. **Check for cascading errors** - fix the first error only, rebuild
+2. **Look for conflicting definitions** - stubs.h vs real implementations
+3. **Check header includes** - missing `<vector>`, `<array>`, etc.
+4. **Verify platform guards** - `#ifdef _WIN32` around Windows-specific code
+
+### Missing Function at Link Time
+
+The function exists in a file not yet added to CMakeLists.txt. Either:
+1. Add the source file to the build
+2. Create a stub in stubs.h
+
+### Stub Not Working
+
+Ensure the stub is in stubs.h BEFORE the file that needs it includes stubs.h. Include order:
+```cpp
+#include "defines.h"      // First - redirects to compat.h
+#include "dream/stubs.h"  // Second - provides stubs
+// ... other includes
+```
