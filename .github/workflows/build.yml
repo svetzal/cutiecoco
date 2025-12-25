@@ -159,7 +159,7 @@ jobs:
           cp qt/cutiecoco.desktop AppDir/  # Also at root for linuxdeployqt
 
           # Create a simple icon (placeholder - you can replace with a real icon later)
-          convert -size 256x256 xc:purple -fill white -gravity center -pointsize 48 -annotate 0 "CC" AppDir/usr/share/icons/hicolor/256x256/apps/cutiecoco.png
+          convert -size 256x256 xc:'#6B46C1' AppDir/usr/share/icons/hicolor/256x256/apps/cutiecoco.png
           cp AppDir/usr/share/icons/hicolor/256x256/apps/cutiecoco.png AppDir/cutiecoco.png
 
           # Download linuxdeployqt
