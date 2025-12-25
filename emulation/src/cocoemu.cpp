@@ -192,14 +192,22 @@ public:
 
         // Convert 32-bit stereo to 16-bit mono
         // Legacy format: low 16 bits = left, high 16 bits = right
-        // The samples are unsigned (0-65535), need to convert to signed
+        // CoCo DAC is 6-bit (0-63) shifted left by 7, giving range ~0-8192
+        // Center value (silence) is roughly 32<<7 = 4096
+        // Scale by 4x to use more of the 16-bit range
+        constexpr int DC_OFFSET = 4096;  // Center of 6-bit DAC << 7
+        constexpr int SCALE = 4;          // Scale factor for volume
+
         m_audioSamples.reserve(sampleCount);
         for (unsigned int i = 0; i < sampleCount; ++i) {
             // Extract left channel (low 16 bits)
-            uint16_t unsignedSample = rawBuffer[i] & 0xFFFF;
-            // Convert from unsigned (0-65535) to signed (-32768 to 32767)
-            int16_t sample = static_cast<int16_t>(unsignedSample - 32768);
-            m_audioSamples.push_back(sample);
+            int sample = static_cast<int>(rawBuffer[i] & 0xFFFF);
+            // Center around 0 and scale
+            sample = (sample - DC_OFFSET) * SCALE;
+            // Clamp to 16-bit range
+            if (sample > 32767) sample = 32767;
+            if (sample < -32768) sample = -32768;
+            m_audioSamples.push_back(static_cast<int16_t>(sample));
         }
 
         // Reset the audio index for the next frame
