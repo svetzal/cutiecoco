@@ -13,14 +13,14 @@ Qt implementations are being developed.
 
 // ============================================================================
 // Cassette stubs (was in Cassette.h)
+// Note: GetCasSample, SetCassetteSample defined in mc6821.cpp
 // ============================================================================
 
 inline uint8_t GetMotorState() { return 0; }
 inline void FlushCassetteBuffer(unsigned char*, unsigned int*) {}
 inline void LoadCassetteBuffer(unsigned char*, unsigned int*) {}
-inline uint8_t GetCasSample() { return 0x80; }  // Silence
-inline void SetCassetteSample(uint8_t) {}
 inline unsigned int GetTapeRate() { return 44100; }
+inline void Motor(unsigned char) {}  // Cassette motor control
 
 // ============================================================================
 // DirectDraw/Display stubs (was in DirectDrawInterface.h)
@@ -32,6 +32,7 @@ inline uint8_t GetMem(unsigned int) { return 0; }
 
 // ============================================================================
 // Audio stubs (was in audio.h - old Windows version)
+// Note: GetDACSample is defined in mc6821.cpp
 // ============================================================================
 
 // Default audio sample rate
@@ -40,7 +41,20 @@ constexpr unsigned int AUDIO_RATE = 44100;
 inline int GetFreeBlockCount() { return 4; }  // Pretend we have buffer space
 inline void FlushAudioBuffer(unsigned int*, unsigned int) {}
 inline void ResetAudio() {}
-inline unsigned int GetDACSample() { return 0x80008000; }  // Silence (stereo)
+
+// Pak audio sample (from cartridge)
+inline unsigned int PackAudioSample() { return 0; }
+
+// ============================================================================
+// Joystick stubs (was in joystickinput.h)
+// ============================================================================
+
+inline void vccJoystickStartCCMax() {}
+inline void vccJoystickStartTandy(unsigned char) {}
+inline unsigned short vccJoystickCompute(unsigned char) { return 0; }
+
+// Joystick ramp clock counter (used by CPU for joystick timing)
+extern int JS_Ramp_Clock;
 
 // ============================================================================
 // Keyboard stubs (was in keyboard.h)
@@ -81,11 +95,25 @@ inline std::filesystem::path GetCustomSystemRomPath() { return {}; }
 #endif
 
 inline int MessageBox(void*, const char* message, const char*, unsigned int) {
-    // TODO: Implement proper error dialog with Qt
-    // For now, just print to stderr
     fprintf(stderr, "MessageBox: %s\n", message);
     return 0;
 }
+
+// OutputDebugString stub
+inline void OutputDebugString(const char* msg) {
+    fprintf(stderr, "Debug: %s", msg);
+}
+
+// Palette type constants
+#define PALETTE_RGB 0
+#define PALETTE_NTSC 1
+
+// Palette config stub
+inline int GetPaletteType() { return PALETTE_RGB; }
+
+// Screen clear stub (was in DirectDrawInterface or similar)
+struct SystemState;
+inline void Cls(unsigned int, SystemState*) {}
 
 // ============================================================================
 // Throttle stubs (was in throttle.h - Windows implementation)
@@ -103,6 +131,38 @@ inline float CalculateFPS() { return 60.0f; }
 
 inline void SetCPUMultiplyerFlag(unsigned char) {}
 inline unsigned char GetCPUMultiplyerFlag() { return 1; }
+inline void SetTurboMode(unsigned char) {}  // Turbo speed mode
+
+// ============================================================================
+// CPU interrupt stubs
+// These forward to the actual CPU when it's active
+// ============================================================================
+
+// Forward declarations of actual CPU functions (mc6809.cpp, hd6309.cpp)
+void MC6809AssertInterupt(unsigned char, unsigned char);
+void MC6809DeAssertInterupt(unsigned char);
+void HD6309AssertInterupt(unsigned char, unsigned char);
+void HD6309DeAssertInterupt(unsigned char);
+
+// Current CPU type (0 = 6809, 1 = 6309)
+extern unsigned char CurrentCPUType;
+
+// Wrapper functions that forward to the active CPU
+inline void CPUAssertInterupt(unsigned char irqType, unsigned char state) {
+    if (CurrentCPUType == 0) {
+        MC6809AssertInterupt(irqType, state);
+    } else {
+        HD6309AssertInterupt(irqType, state);
+    }
+}
+
+inline void CPUDeAssertInterupt(unsigned char irqType) {
+    if (CurrentCPUType == 0) {
+        MC6809DeAssertInterupt(irqType);
+    } else {
+        HD6309DeAssertInterupt(irqType);
+    }
+}
 
 // ============================================================================
 // PIA cassette/mux stubs (from mc6821)

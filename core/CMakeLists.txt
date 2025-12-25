@@ -5,15 +5,16 @@ add_library(dream-core STATIC
     src/core.cpp
     src/audio.cpp
     src/emulation.cpp
+    src/keyboard.cpp
     # Legacy emulation files - cleaned of Windows dependencies
-    # TODO: Add these once inter-file dependencies are resolved:
-    # - mc6809.cpp, hd6309.cpp (CPUs - need CPUAssertInterupt stubs)
-    # - coco3.cpp (system - needs joystick stubs)
-    # - mc6821.cpp (PIA - conflicts with stubs, needs resolution)
-    # - iobus.cpp (I/O)
-    # - tcc1014mmu.cpp (MMU)
-    # - tcc1014registers.cpp (GIME registers)
-    # - tcc1014graphics.cpp (GIME graphics)
+    ${CMAKE_SOURCE_DIR}/mc6809.cpp
+    ${CMAKE_SOURCE_DIR}/hd6309.cpp
+    ${CMAKE_SOURCE_DIR}/tcc1014mmu.cpp
+    ${CMAKE_SOURCE_DIR}/tcc1014registers.cpp
+    ${CMAKE_SOURCE_DIR}/tcc1014graphics.cpp
+    ${CMAKE_SOURCE_DIR}/iobus.cpp
+    ${CMAKE_SOURCE_DIR}/mc6821.cpp
+    ${CMAKE_SOURCE_DIR}/coco3.cpp
 )
 
 target_include_directories(dream-core PUBLIC

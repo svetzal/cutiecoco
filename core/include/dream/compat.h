@@ -37,6 +37,9 @@ namespace VCC {
     const int DefaultWidth = 640;
     const int DefaultHeight = 480;
 
+    // Alias for CPUState from types.h
+    using CPUState = dream::CPUState;
+
     union Pixel;
 
     struct Point {

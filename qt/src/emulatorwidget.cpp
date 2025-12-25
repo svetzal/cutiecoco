@@ -1,8 +1,97 @@
 #include "emulatorwidget.h"
 #include "dream/emulation.h"
+#include "dream/keyboard.h"
 
 #include <QKeyEvent>
 #include <QOpenGLContext>
+#include <optional>
+#include <unordered_map>
+
+namespace {
+    // CoCo 3 aspect ratio (640x480 = 4:3)
+    constexpr float ASPECT_RATIO = 4.0f / 3.0f;
+
+    // Map Qt key codes to CoCo keys
+    // This provides a "natural" mapping where keys match their keycap labels
+    std::optional<dream::CocoKey> mapQtKeyToCoco(int qtKey)
+    {
+        using K = dream::CocoKey;
+
+        switch (qtKey) {
+            // Letters
+            case Qt::Key_A: return K::A;
+            case Qt::Key_B: return K::B;
+            case Qt::Key_C: return K::C;
+            case Qt::Key_D: return K::D;
+            case Qt::Key_E: return K::E;
+            case Qt::Key_F: return K::F;
+            case Qt::Key_G: return K::G;
+            case Qt::Key_H: return K::H;
+            case Qt::Key_I: return K::I;
+            case Qt::Key_J: return K::J;
+            case Qt::Key_K: return K::K;
+            case Qt::Key_L: return K::L;
+            case Qt::Key_M: return K::M;
+            case Qt::Key_N: return K::N;
+            case Qt::Key_O: return K::O;
+            case Qt::Key_P: return K::P;
+            case Qt::Key_Q: return K::Q;
+            case Qt::Key_R: return K::R;
+            case Qt::Key_S: return K::S;
+            case Qt::Key_T: return K::T;
+            case Qt::Key_U: return K::U;
+            case Qt::Key_V: return K::V;
+            case Qt::Key_W: return K::W;
+            case Qt::Key_X: return K::X;
+            case Qt::Key_Y: return K::Y;
+            case Qt::Key_Z: return K::Z;
+
+            // Numbers
+            case Qt::Key_0: return K::Key0;
+            case Qt::Key_1: return K::Key1;
+            case Qt::Key_2: return K::Key2;
+            case Qt::Key_3: return K::Key3;
+            case Qt::Key_4: return K::Key4;
+            case Qt::Key_5: return K::Key5;
+            case Qt::Key_6: return K::Key6;
+            case Qt::Key_7: return K::Key7;
+            case Qt::Key_8: return K::Key8;
+            case Qt::Key_9: return K::Key9;
+
+            // Arrow keys
+            case Qt::Key_Up: return K::Up;
+            case Qt::Key_Down: return K::Down;
+            case Qt::Key_Left: return K::Left;
+            case Qt::Key_Right: return K::Right;
+
+            // Special keys
+            case Qt::Key_Return:
+            case Qt::Key_Enter: return K::Enter;
+            case Qt::Key_Space: return K::Space;
+            case Qt::Key_Shift: return K::Shift;
+            case Qt::Key_Control: return K::Ctrl;
+            case Qt::Key_Alt: return K::Alt;
+            case Qt::Key_Escape: return K::Break;
+            case Qt::Key_Backspace: return K::Left;  // Backspace acts as left arrow
+            case Qt::Key_Home: return K::Clear;
+
+            // Punctuation
+            case Qt::Key_At: return K::At;
+            case Qt::Key_Colon: return K::Colon;
+            case Qt::Key_Semicolon: return K::Semicolon;
+            case Qt::Key_Comma: return K::Comma;
+            case Qt::Key_Minus: return K::Minus;
+            case Qt::Key_Period: return K::Period;
+            case Qt::Key_Slash: return K::Slash;
+
+            // Function keys
+            case Qt::Key_F1: return K::F1;
+            case Qt::Key_F2: return K::F2;
+
+            default: return std::nullopt;
+        }
+    }
+}
 
 EmulatorWidget::EmulatorWidget(QWidget *parent)
     : QOpenGLWidget(parent)
@@ -135,12 +224,35 @@ void EmulatorWidget::initializeGL()
 
 void EmulatorWidget::resizeGL(int w, int h)
 {
-    glViewport(0, 0, w, h);
+    // Calculate aspect-ratio-preserving viewport
+    float windowAspect = static_cast<float>(w) / static_cast<float>(h);
+
+    if (windowAspect > ASPECT_RATIO) {
+        // Window is wider than content - pillarbox (bars on sides)
+        m_viewportH = h;
+        m_viewportW = static_cast<int>(h * ASPECT_RATIO);
+        m_viewportX = (w - m_viewportW) / 2;
+        m_viewportY = 0;
+    } else {
+        // Window is taller than content - letterbox (bars on top/bottom)
+        m_viewportW = w;
+        m_viewportH = static_cast<int>(w / ASPECT_RATIO);
+        m_viewportX = 0;
+        m_viewportY = (h - m_viewportH) / 2;
+    }
+
+    // Set the viewport for rendering
+    glViewport(m_viewportX, m_viewportY, m_viewportW, m_viewportH);
 }
 
 void EmulatorWidget::paintGL()
 {
+    // Clear the entire window (including letterbox/pillarbox areas)
+    glViewport(0, 0, width(), height());
     glClear(GL_COLOR_BUFFER_BIT);
+
+    // Set viewport for content with aspect ratio preservation
+    glViewport(m_viewportX, m_viewportY, m_viewportW, m_viewportH);
 
     // Upload framebuffer to texture
     glBindTexture(GL_TEXTURE_2D, m_texture);
@@ -170,12 +282,34 @@ void EmulatorWidget::paintGL()
 
 void EmulatorWidget::keyPressEvent(QKeyEvent *event)
 {
-    // TODO: Forward to emulator keyboard handler
-    QOpenGLWidget::keyPressEvent(event);
+    // Ignore auto-repeat events for key down
+    if (event->isAutoRepeat()) {
+        event->ignore();
+        return;
+    }
+
+    auto cocoKey = mapQtKeyToCoco(event->key());
+    if (cocoKey) {
+        dream::getKeyboard().keyDown(*cocoKey);
+        event->accept();
+    } else {
+        QOpenGLWidget::keyPressEvent(event);
+    }
 }
 
 void EmulatorWidget::keyReleaseEvent(QKeyEvent *event)
 {
-    // TODO: Forward to emulator keyboard handler
-    QOpenGLWidget::keyReleaseEvent(event);
+    // Ignore auto-repeat events for key up
+    if (event->isAutoRepeat()) {
+        event->ignore();
+        return;
+    }
+
+    auto cocoKey = mapQtKeyToCoco(event->key());
+    if (cocoKey) {
+        dream::getKeyboard().keyUp(*cocoKey);
+        event->accept();
+    } else {
+        QOpenGLWidget::keyReleaseEvent(event);
+    }
 }

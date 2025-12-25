@@ -22,10 +22,14 @@ This file is part of DREAM-VCC.
 #include <chrono>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <thread>
 
 namespace dream {
+
+// Forward declaration
+class FrameBuffer;
 
 // Frame timing constants for CoCo 3 emulation
 constexpr double FRAME_RATE = 59.923;
@@ -126,7 +130,7 @@ private:
     std::mutex m_callbackMutex;
 
     // Framebuffer (RGBA format)
-    std::vector<uint8_t> m_framebuffer;
+    std::unique_ptr<FrameBuffer> m_framebuffer;
 
     // Timing
     using Clock = std::chrono::steady_clock;

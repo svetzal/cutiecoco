@@ -60,6 +60,12 @@ private:
 
     // Refresh timer for display updates
     QTimer* m_refreshTimer;
+
+    // Viewport for aspect-ratio-correct rendering
+    int m_viewportX = 0;
+    int m_viewportY = 0;
+    int m_viewportW = 0;
+    int m_viewportH = 0;
 };
 
 #endif // EMULATORWIDGET_H

@@ -17,12 +17,20 @@ This file is part of DREAM-VCC.
 */
 
 #include "dream/emulation.h"
+#include "dream/framebuffer.h"
+#include "dream/compat.h"  // For EmuState
+#include "dream/stubs.h"   // For CPUExecFuncPtr
+#include "mc6809.h"
+#include "hd6309.h"
+#include "tcc1014mmu.h"
+#include "tcc1014graphics.h"
+#include "coco3.h"
 #include <cstring>
 
 namespace dream {
 
 EmulationThread::EmulationThread()
-    : m_framebuffer(FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT * 4, 0)
+    : m_framebuffer(std::make_unique<FrameBuffer>(FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT))
 {
 }
 
@@ -79,17 +87,39 @@ void EmulationThread::reset()
 
 void EmulationThread::initializeEmulation()
 {
-    // TODO: Initialize CPU, MMU, GIME, etc.
-    // For now, fill framebuffer with CoCo green screen
-    for (int y = 0; y < FRAMEBUFFER_HEIGHT; ++y) {
-        for (int x = 0; x < FRAMEBUFFER_WIDTH; ++x) {
-            size_t offset = (y * FRAMEBUFFER_WIDTH + x) * 4;
-            m_framebuffer[offset + 0] = 0;    // R
-            m_framebuffer[offset + 1] = 255;  // G (CoCo green)
-            m_framebuffer[offset + 2] = 0;    // B
-            m_framebuffer[offset + 3] = 255;  // A
-        }
+    // Initialize memory subsystem (512K RAM by default)
+    unsigned char* memory = MmuInit(_512K);
+    if (memory == nullptr) {
+        fprintf(stderr, "Failed to initialize MMU\n");
+        m_framebuffer->clear(0xFF0000FF);  // Red = error
+        return;
     }
+
+    // Set up the global EmuState with our framebuffer
+    EmuState.PTRsurface32 = m_framebuffer->pixels();
+    EmuState.SurfacePitch = m_framebuffer->pitch();
+    EmuState.BitDepth = 32;
+    EmuState.RamBuffer = memory;
+    EmuState.EmulationRunning = 1;
+    EmuState.WindowSize = VCC::Size(FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT);
+
+    // Initialize CPU (default to 6809)
+    MC6809Init();
+    MC6809Reset();
+
+    // Initialize GIME graphics
+    GimeInit();
+    GimeReset();
+
+    // Set up audio rate
+    SetAudioRate(44100);
+
+    // Reset misc (timers, interrupts, etc.)
+    MiscReset();
+
+    // Set the CPUExec function pointer to the real CPU
+    // CPUExec is defined in core.cpp at global scope
+    ::CPUExec = MC6809Exec;
 
     m_resetRequested.store(false);
 }
@@ -125,7 +155,7 @@ void EmulationThread::threadMain()
         {
             std::lock_guard<std::mutex> lock(m_callbackMutex);
             if (m_frameCallback) {
-                m_frameCallback(m_framebuffer.data(), FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT);
+                m_frameCallback(m_framebuffer->data(), FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT);
             }
         }
 
@@ -166,52 +196,13 @@ void EmulationThread::threadMain()
 
 void EmulationThread::renderFrame()
 {
-    // TODO: This is where the actual emulation happens
-    // For now, generate a test pattern that changes over time
+    // Update the surface pointer in case it changed
+    EmuState.PTRsurface32 = m_framebuffer->pixels();
+    EmuState.SurfacePitch = m_framebuffer->pitch();
 
-    static int frame = 0;
-    ++frame;
-
-    // Generate a simple animated test pattern
-    // This demonstrates the framebuffer is working and being updated
-    for (int y = 0; y < FRAMEBUFFER_HEIGHT; ++y) {
-        for (int x = 0; x < FRAMEBUFFER_WIDTH; ++x) {
-            size_t offset = (y * FRAMEBUFFER_WIDTH + x) * 4;
-
-            // Create a CoCo-like green screen with a simple pattern
-            // Border area
-            bool isBorder = (x < 32 || x >= FRAMEBUFFER_WIDTH - 32 ||
-                            y < 24 || y >= FRAMEBUFFER_HEIGHT - 24);
-
-            if (isBorder) {
-                // CoCo green border
-                m_framebuffer[offset + 0] = 0;
-                m_framebuffer[offset + 1] = 255;
-                m_framebuffer[offset + 2] = 0;
-                m_framebuffer[offset + 3] = 255;
-            } else {
-                // Animated content area - simple color bars that scroll
-                int col = ((x - 32) / 64 + frame / 30) % 8;
-
-                // CoCo palette colors (simplified)
-                static const uint8_t palette[8][3] = {
-                    {0, 0, 0},       // Black
-                    {0, 0, 255},     // Blue
-                    {0, 255, 0},     // Green
-                    {0, 255, 255},   // Cyan
-                    {255, 0, 0},     // Red
-                    {255, 0, 255},   // Magenta
-                    {255, 255, 0},   // Yellow
-                    {255, 255, 255}, // White
-                };
-
-                m_framebuffer[offset + 0] = palette[col][0];
-                m_framebuffer[offset + 1] = palette[col][1];
-                m_framebuffer[offset + 2] = palette[col][2];
-                m_framebuffer[offset + 3] = 255;
-            }
-        }
-    }
+    // Run one frame of emulation
+    // RenderFrame handles CPU execution, GIME rendering, audio, etc.
+    RenderFrame(&EmuState);
 }
 
 } // namespace dream
