@@ -27,14 +27,19 @@ int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
     app.setApplicationName("CutieCoCo");
-    app.setApplicationVersion("0.1.0");
+    app.setApplicationVersion("0.2.0");
     app.setOrganizationName("CutieCoCo");
 
     // Set the system ROM path before creating the main window
-    SetSystemRomPath(getSystemRomPath());
+    auto romPath = getSystemRomPath();
+    fprintf(stderr, "ROM path: %s\n", romPath.string().c_str());
+    SetSystemRomPath(romPath);
 
+    fprintf(stderr, "Creating main window...\n");
     MainWindow window;
+    fprintf(stderr, "Showing window...\n");
     window.show();
 
+    fprintf(stderr, "Entering event loop...\n");
     return app.exec();
 }
