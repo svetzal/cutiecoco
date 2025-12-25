@@ -15,15 +15,16 @@ The `qt` branch contains the cross-platform port. Key changes:
 
 **What's Done:**
 - CMake build system with Qt6 dependencies
-- Core library structure (`core/`)
-- Qt application skeleton (`qt/`)
-- Compatibility layer for legacy VCC types (`core/include/dream/`)
+- Monorepo structure: `emulation/`, `platforms/`, `shared/`
+- Emulation library (`emulation/`)
+- Qt application (`platforms/qt/`)
+- Compatibility layer for legacy VCC types (`emulation/include/cutie/`)
 - Stub audio system and debugger
 - EmulationThread with std::chrono timing (~60 FPS)
 - Thread-safe frame callback to Qt display widget
-- Stubs for removed Windows functionality (`core/include/dream/stubs.h`)
+- Stubs for removed Windows functionality (`emulation/include/cutie/stubs.h`)
 - coco3.cpp cleaned of Windows dependencies
-- Keyboard input with character-based mapping (`core/src/keyboard.cpp`)
+- Keyboard input with character-based mapping (`emulation/src/keyboard.cpp`)
 
 **What Remains:**
 - Clean remaining legacy files (pakinterface.cpp)
@@ -55,18 +56,18 @@ cmake .. -DCMAKE_PREFIX_PATH="$HOME/Qt/6.10.1/macos"
 cmake --build .
 
 # Run (macOS)
-open qt/cutiecoco.app
+open platforms/qt/cutiecoco.app
 ```
 
-**Output:** `build/qt/cutiecoco.app` (macOS) or `build/qt/cutiecoco` (Linux)
+**Output:** `build/platforms/qt/cutiecoco.app` (macOS) or `build/platforms/qt/cutiecoco` (Linux)
 
 ## Architecture
 
 ### Directory Structure
 
 ```
-core/                    # Platform-independent emulation library
-  include/dream/
+emulation/               # Platform-independent emulation library
+  include/cutie/
     types.h              # Core types (SystemState, Point, Size, Rect)
     compat.h             # VCC compatibility layer (includes types + debugger)
     debugger.h           # Stub debugger (no-op implementation)
@@ -77,30 +78,120 @@ core/                    # Platform-independent emulation library
     core.cpp             # Global EmuState definition
     audio.cpp            # Audio factory
     emulation.cpp        # EmulationThread implementation
+    keyboard.cpp         # Keyboard matrix handling
+  # Legacy emulation files:
+  mc6809.cpp, hd6309.cpp # CPU emulation
+  tcc1014*.cpp           # GIME graphics/MMU
+  coco3.cpp              # System coordination
+  mc6821.cpp             # PIA (I/O ports)
+  libcommon/             # Shared utilities (logger, bus, media)
 
-qt/                      # Qt application
-  include/
-    mainwindow.h
-    emulatorwidget.h     # OpenGL display widget + emulation integration
-  src/
-    main.cpp
-    mainwindow.cpp
-    emulatorwidget.cpp
+platforms/
+  qt/                    # Qt application
+    include/
+      mainwindow.h
+      emulatorwidget.h   # OpenGL display widget + emulation integration
+    src/
+      main.cpp
+      mainwindow.cpp
+      emulatorwidget.cpp
+  macos/                 # Future macOS-native application
+  windows/               # Future Windows-native application
 
-# Legacy files (being cleaned/integrated):
-mc6809.cpp, hd6309.cpp   # CPU emulation (cleaned)
-tcc1014*.cpp             # GIME graphics/MMU (needs cleanup)
-coco3.cpp                # System coordination (cleaned)
-mc6821.cpp               # PIA (I/O ports, cleaned)
+shared/
+  3rdparty/              # Third-party headers (GL, stb)
+  resources/             # Icons, graphics resources
+  system-roms/           # CoCo 3 system ROM files
+```
+
+### Public Emulation API
+
+The emulation library exposes a clean public API through two main headers:
+
+**`emulation/include/cutie/emulator.h`** - Main emulator interface:
+```cpp
+namespace cutie {
+
+enum class MemorySize { _128K, _512K, _2M, _8M };
+enum class CpuType { MC6809, HD6309 };
+
+struct EmulatorConfig {
+    MemorySize memorySize = MemorySize::_512K;
+    CpuType cpuType = CpuType::MC6809;
+    std::filesystem::path systemRomPath;
+    uint32_t audioSampleRate = 44100;
+};
+
+class CocoEmulator {
+public:
+    static std::unique_ptr<CocoEmulator> create(const EmulatorConfig& config = {});
+
+    // Lifecycle
+    virtual bool init() = 0;
+    virtual void reset() = 0;
+    virtual void shutdown() = 0;
+
+    // Execution
+    virtual void runFrame() = 0;
+    virtual int runCycles(int cycles) = 0;
+
+    // Input
+    virtual void setKeyState(int row, int col, bool pressed) = 0;
+    virtual void setJoystickAxis(int joystick, int axis, int value) = 0;
+    virtual void setJoystickButton(int joystick, int button, bool pressed) = 0;
+
+    // Output
+    virtual std::span<const uint8_t> getFramebuffer() const = 0;
+    virtual std::span<const int16_t> getAudioSamples() const = 0;
+};
+
+} // namespace cutie
+```
+
+**`emulation/include/cutie/interfaces.h`** - Platform abstraction interfaces:
+```cpp
+namespace cutie {
+
+// Video output - platform implements to receive frames
+class IVideoOutput {
+    virtual void onFrame(const uint8_t* pixels, int width, int height, int pitch) = 0;
+    virtual void onModeChange(int width, int height) = 0;
+};
+
+// Audio output - platform implements to play audio
+class IAudioOutput {
+    virtual bool init(uint32_t sampleRate) = 0;
+    virtual void submitSamples(const int16_t* samples, size_t count) = 0;
+    virtual size_t getQueuedSampleCount() const = 0;
+};
+
+// Input provider - platform implements to provide keyboard/joystick
+class IInputProvider {
+    virtual uint8_t scanKeyboard(uint8_t colMask) const = 0;
+    virtual int getJoystickAxis(int joystick, int axis) const = 0;
+    virtual bool getJoystickButton(int joystick, int button) const = 0;
+};
+
+// Cartridge interface - for ROM paks and expansion devices
+class ICartridge {
+    virtual uint8_t read(uint16_t address) const = 0;
+    virtual void write(uint16_t address, uint8_t value) = 0;
+    virtual uint8_t readPort(uint8_t port) const = 0;
+    virtual void writePort(uint8_t port, uint8_t value) = 0;
+};
+
+// Null implementations provided for testing: NullVideoOutput, NullAudioOutput, etc.
+
+} // namespace cutie
 ```
 
 ### Compatibility Layer
 
-The `core/include/dream/compat.h` header provides VCC-compatible types so legacy code can compile with minimal changes:
+The `emulation/include/cutie/compat.h` header provides VCC-compatible types so legacy code can compile with minimal changes:
 
 ```cpp
 // Legacy code includes this:
-#include "defines.h"      // Redirects to dream/compat.h
+#include "defines.h"      // Redirects to cutie/compat.h
 
 // Provides:
 // - SystemState struct with EmuState global
@@ -169,10 +260,10 @@ When cleaning a legacy file of Windows dependencies:
    #include "OpDecoder.h"     // Debugger, not needed for emulation
 
    // Add this for stub implementations:
-   #include "dream/stubs.h"
+   #include "cutie/stubs.h"
    ```
 
-2. **Keep defines.h** - it now redirects to `dream/compat.h`
+2. **Keep defines.h** - it now redirects to `cutie/compat.h`
 
 3. **Replace Windows types:**
    - `BOOL` → `bool`
@@ -192,11 +283,11 @@ When cleaning a legacy file of Windows dependencies:
    Headers often need includes added. Common missing includes:
    ```cpp
    #include <vector>           // For std::vector in function signatures
-   #include "dream/compat.h"   // For VCC::CPUState
+   #include "cutie/compat.h"   // For VCC::CPUState
    ```
 
 6. **Use stubs.h for removed functionality:**
-   The `core/include/dream/stubs.h` provides inline stubs for functions from deleted modules:
+   The `emulation/include/cutie/stubs.h` provides inline stubs for functions from deleted modules:
    - Cassette: `GetMotorState()`, `FlushCassetteBuffer()`, `GetCasSample()`, etc.
    - Audio: `GetFreeBlockCount()`, `FlushAudioBuffer()`, `GetDACSample()`, `AUDIO_RATE`
    - Display: `LockScreen()`, `UnlockScreen()`, `GetMem()`
@@ -234,10 +325,10 @@ When cleaning a legacy file of Windows dependencies:
 2. Use `#ifndef` guards around stubs
 3. Reorganize stubs into categories that can be selectively included
 
-### VCC::CPUState vs dream::CPUState
+### VCC::CPUState vs cutie::CPUState
 
-The `VCC::CPUState` is an alias to `dream::CPUState` (defined in `types.h`). When adding CPU register fields:
-- Add to `dream::CPUState` in `core/include/dream/types.h`
+The `VCC::CPUState` is an alias to `cutie::CPUState` (defined in `types.h`). When adding CPU register fields:
+- Add to `cutie::CPUState` in `emulation/include/cutie/types.h`
 - Do NOT add a separate struct in `compat.h` (will conflict)
 
 Current CPUState fields:
@@ -268,14 +359,14 @@ Windows-specific components have been removed:
 ## Code Conventions
 
 - Legacy code uses `EmuState` global and `VCC::` namespace
-- New code should use `dream::` namespace
+- New code should use `cutie::` namespace
 - Prefer `<cstdio>` over `<stdio.h>` style includes
 - Use `bool` not `BOOL`
 - Core emulation should have no platform dependencies
 
 ## EmulationThread Pattern
 
-The `dream::EmulationThread` class (`core/include/dream/emulation.h`) runs the emulation loop in a separate thread:
+The `cutie::EmulationThread` class (`emulation/include/cutie/emulation.h`) runs the emulation loop in a separate thread:
 
 ```cpp
 // Start emulation with a frame callback
@@ -386,19 +477,22 @@ On a 2x Retina display, you should see `devicePixelRatio=2.00`. If `w` and `h` m
 
 To integrate a cleaned legacy file:
 
-1. Add it to `core/CMakeLists.txt`:
+1. Add it to `emulation/CMakeLists.txt`:
    ```cmake
-   add_library(dream-core STATIC
+   add_library(cutie-emulation STATIC
        src/core.cpp
        src/audio.cpp
        src/emulation.cpp
-       ${CMAKE_SOURCE_DIR}/coco3.cpp  # Legacy file
+       src/keyboard.cpp
+       coco3.cpp  # Legacy files are directly in emulation/
+       mc6809.cpp
+       # ... etc.
    )
    ```
 
-2. Ensure it includes `dream/stubs.h` for missing dependencies
+2. Ensure it includes `cutie/stubs.h` for missing dependencies
 
-3. The legacy code uses globals (`EmuState`) defined in `core/src/core.cpp`
+3. The legacy code uses globals (`EmuState`) defined in `emulation/src/core.cpp`
 
 4. **Test compilation after EACH file** - errors cascade quickly
 
@@ -431,7 +525,7 @@ Due to dependencies, integrate files in this order:
 | `no template named 'vector'` | Header missing `#include <vector>` | Add include to the .h file |
 | `redefinition of 'FunctionName'` | Stub conflicts with real impl | Remove stub or use guards |
 | `use of undeclared identifier` | Missing stub or include | Add to stubs.h or add include |
-| `no member named 'X' in 'CPUState'` | Missing field in types.h | Add to dream::CPUState |
+| `no member named 'X' in 'CPUState'` | Missing field in types.h | Add to cutie::CPUState |
 | `'__declspec' attributes not enabled` | Windows-only export macro | Check libcommon/include/vcc/detail/exports.h has platform guards |
 
 ## Emulator Initialization
@@ -610,10 +704,10 @@ Key implementation points:
 
 ### Files Involved
 
-- `core/include/dream/keyboard.h` - CocoKey enum, Keyboard class
-- `core/src/keyboard.cpp` - Matrix storage and scan function
-- `qt/src/emulatorwidget.cpp` - Qt key event → CoCo key mapping
-- `mc6821.cpp` - PIA calls `vccKeyboardGetScan()` when $FF00 is read
+- `emulation/include/cutie/keyboard.h` - CocoKey enum, Keyboard class
+- `emulation/src/keyboard.cpp` - Matrix storage and scan function
+- `platforms/qt/src/emulatorwidget.cpp` - Qt key event → CoCo key mapping
+- `emulation/mc6821.cpp` - PIA calls `vccKeyboardGetScan()` when $FF00 is read
 
 ## Troubleshooting
 
@@ -635,6 +729,6 @@ The function exists in a file not yet added to CMakeLists.txt. Either:
 Ensure the stub is in stubs.h BEFORE the file that needs it includes stubs.h. Include order:
 ```cpp
 #include "defines.h"      // First - redirects to compat.h
-#include "dream/stubs.h"  // Second - provides stubs
+#include "cutie/stubs.h"  // Second - provides stubs
 // ... other includes
 ```

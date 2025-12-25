@@ -116,7 +116,8 @@
       "Bash(gh run view:*)",
       "Bash(git tag:*)",
       "Bash(gh release:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(git mv:*)"
     ]
   }
 }

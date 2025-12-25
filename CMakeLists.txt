@@ -10,8 +10,8 @@ set(CMAKE_AUTOUIC ON)
 # Find Qt6
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets OpenGL OpenGLWidgets)
 
-# Platform-independent core emulation library
-add_subdirectory(core)
+# Platform-independent emulation library
+add_subdirectory(emulation)
 
-# Qt application
-add_subdirectory(qt)
+# Qt platform application
+add_subdirectory(platforms/qt)
