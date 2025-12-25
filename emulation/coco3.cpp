@@ -136,7 +136,8 @@ void UpdateAudio()
 #endif // USE_DEBUG_AUDIOTAPE
 
 	// keep audio system full by tiny expansion of sound
-	if (AudioFreeBlockCount > 1 && (AudioIndex & 63) == 1)
+	if (AudioFreeBlockCount > 1 && (AudioIndex & 63) == 1
+	    && AudioIndex < sizeof(AudioBuffer)/sizeof(AudioBuffer[0]))
 	{
 		unsigned int last = AudioBuffer[AudioIndex - 1];
 		AudioBuffer[AudioIndex++] = last;
@@ -607,10 +608,28 @@ unsigned int SetAudioRate (unsigned int Rate)
 	return 0;
 }
 
+// Audio buffer access for public API
+const unsigned int* GetAudioBuffer()
+{
+	return AudioBuffer;
+}
+
+unsigned int GetAudioSampleCount()
+{
+	return AudioIndex;
+}
+
+void ResetAudioIndex()
+{
+	AudioIndex = 0;
+}
+
 void AudioOut()
 {
-
-	AudioBuffer[AudioIndex++]=GetDACSample();
+	// Bounds check to prevent buffer overflow
+	if (AudioIndex < sizeof(AudioBuffer)/sizeof(AudioBuffer[0])) {
+		AudioBuffer[AudioIndex++]=GetDACSample();
+	}
 	return;
 }
 
@@ -685,7 +704,7 @@ void CassIn()
 	auto right = (getRight(casChannel) * fade + getRight(dacChannel) * (FADE_TIME - fade)) / FADE_TIME;
 	auto sample = (unsigned int)(left + (right << 16));
 
-	while (NanosToAudioSample > 0)
+	while (NanosToAudioSample > 0 && AudioIndex < sizeof(AudioBuffer)/sizeof(AudioBuffer[0]))
 	{
 		AudioBuffer[AudioIndex++] = sample;
 		NanosToAudioSample -= NANOSECOND / AUDIO_RATE;

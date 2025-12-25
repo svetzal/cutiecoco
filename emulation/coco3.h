@@ -50,4 +50,11 @@ void CopyText();
 void FlipArtifacts();
 unsigned int SetAudioRate(unsigned int);
 
+// Audio buffer access for public API
+// Returns pointer to raw audio samples and count
+// Samples are 32-bit stereo (16-bit left in low word, 16-bit right in high word)
+const unsigned int* GetAudioBuffer();
+unsigned int GetAudioSampleCount();
+void ResetAudioIndex();
+
 #endif

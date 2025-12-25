@@ -24,9 +24,9 @@ The `qt` branch contains the cross-platform port. Key changes:
 - Stubs for removed Windows functionality (`emulation/include/cutie/stubs.h`)
 - All legacy emulation files cleaned and integrated
 - Keyboard input with character-based mapping
+- Audio output via Qt using QAudioSink (`platforms/qt/src/qtaudiooutput.cpp`)
 
 **What Remains:**
-- Audio output via Qt (task: DREAM-VCC-2wv)
 - Joystick input (task: DREAM-VCC-j2o)
 - Settings dialogs (task: DREAM-VCC-wfo)
 - Configuration system (task: DREAM-VCC-cc9)
@@ -586,11 +586,12 @@ mc6883_reset();  // CRITICAL: Initializes ROM pointer for CPU reset
 MC6809Init();
 MC6809Reset();
 
-// 5. Disable audio until backend is implemented
-SetAudioRate(0);  // Prevents buffer overflow crash
-
-// 6. Reset misc systems
+// 5. Reset misc systems BEFORE audio setup
+// IMPORTANT: MiscReset() clears audio timing variables!
 MiscReset();
+
+// 6. Enable audio (after MiscReset!)
+SetAudioRate(44100);  // Or 0 to disable
 
 // 7. Set CPU execution pointer
 CPUExec = MC6809Exec;  // or HD6309Exec
@@ -602,7 +603,7 @@ CPUExec = MC6809Exec;  // or HD6309Exec
 |---------|---------|-----|
 | CPU reset before `mc6883_reset()` | Crash in `sam_read()` (null ROM pointer) | Call `mc6883_reset()` before `MC6809Reset()` |
 | `BitDepth = 32` instead of `3` | Crash calling null function pointer | Use index: 0=8bit, 1=16bit, 2=24bit, 3=32bit |
-| `SetAudioRate(44100)` without audio backend | Buffer overflow crash in `AudioOut()` | Use `SetAudioRate(0)` to disable |
+| `SetAudioRate()` before `MiscReset()` | No audio, emulator boots but silent | Call `MiscReset()` first, then `SetAudioRate()` |
 | Missing `MmuInit()` | Null pointer crashes everywhere | Always call first |
 
 ### BitDepth Values

@@ -11,6 +11,8 @@ namespace cutie {
 class CocoEmulator;
 }
 
+class QtAudioOutput;
+
 class EmulatorWidget : public QOpenGLWidget, protected QOpenGLFunctions
 {
     Q_OBJECT
@@ -81,6 +83,9 @@ private:
         bool addedShift;  // Did we add shift for this key?
     };
     std::unordered_map<int, ActiveKeyInfo> m_activeCharKeys;
+
+    // Audio output
+    std::unique_ptr<QtAudioOutput> m_audioOutput;
 };
 
 #endif // EMULATORWIDGET_H

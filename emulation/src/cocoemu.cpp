@@ -29,6 +29,7 @@ This file is part of CutieCoCo.
 #include "coco3.h"
 #include <cstdio>
 #include <cstring>
+#include <vector>
 
 namespace cutie {
 
@@ -105,13 +106,20 @@ public:
             ::CPUExec = MC6809Exec;
         }
 
-        // Disable audio until a proper audio backend is implemented
-        // Setting a non-zero rate causes AudioOut() to write to a buffer
-        // that overflows without a real audio system to drain it
-        SetAudioRate(0);
-
         // Reset misc (timers, interrupts, etc.)
+        // IMPORTANT: Must be called BEFORE SetAudioRate because MiscReset
+        // resets audio timing variables to 0
         MiscReset();
+
+        // Enable audio at configured sample rate
+        // The audio buffer is drained after each frame in runFrame()
+        if (m_config.audioSampleRate > 0) {
+            SetAudioRate(m_config.audioSampleRate);
+            // Reserve space for audio samples (max ~44100/60 = ~735 samples per frame)
+            m_audioSamples.reserve(1024);
+        } else {
+            SetAudioRate(0);
+        }
 
         m_cpuType = m_config.cpuType;
         m_ready = true;
@@ -164,6 +172,36 @@ public:
 
         // Run one frame of emulation
         RenderFrame(&EmuState);
+
+        // Capture audio samples from the legacy buffer
+        // This also resets the audio index for the next frame
+        captureAudioSamples();
+    }
+
+    void captureAudioSamples() {
+        // Get raw samples from coco3.cpp (32-bit stereo)
+        const unsigned int* rawBuffer = GetAudioBuffer();
+        unsigned int sampleCount = GetAudioSampleCount();
+
+        // Clear previous frame's samples
+        m_audioSamples.clear();
+
+        if (sampleCount == 0 || rawBuffer == nullptr) {
+            return;
+        }
+
+        // Convert 32-bit stereo to 16-bit mono
+        // Legacy format: low 16 bits = left, high 16 bits = right
+        // Both channels are typically identical for CoCo, so just use left
+        m_audioSamples.reserve(sampleCount);
+        for (unsigned int i = 0; i < sampleCount; ++i) {
+            // Extract left channel (low 16 bits) and convert to signed
+            int16_t sample = static_cast<int16_t>(rawBuffer[i] & 0xFFFF);
+            m_audioSamples.push_back(sample);
+        }
+
+        // Reset the audio index for the next frame
+        ResetAudioIndex();
     }
 
     int runCycles(int cycles) override {
@@ -247,9 +285,10 @@ public:
     }
 
     std::pair<const int16_t*, size_t> getAudioSamples() const override {
-        // TODO: Implement audio sample buffer
-        // Need to capture samples from the legacy audio system
-        return std::make_pair(nullptr, 0);
+        if (m_audioSamples.empty()) {
+            return std::make_pair(nullptr, 0);
+        }
+        return std::make_pair(m_audioSamples.data(), m_audioSamples.size());
     }
 
     // ========================================================================
@@ -298,6 +337,9 @@ private:
     CpuType m_cpuType = CpuType::MC6809;
     bool m_ready = false;
     std::string m_lastError;
+
+    // Audio samples converted from legacy buffer (16-bit mono)
+    std::vector<int16_t> m_audioSamples;
 };
 
 // Factory function

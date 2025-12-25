@@ -1,4 +1,5 @@
 #include "emulatorwidget.h"
+#include "qtaudiooutput.h"
 #include "cutie/emulator.h"
 #include "cutie/keyboard.h"
 
@@ -209,6 +210,15 @@ void EmulatorWidget::startEmulation()
         }
     }
 
+    // Initialize audio output
+    if (!m_audioOutput) {
+        m_audioOutput = std::make_unique<QtAudioOutput>();
+    }
+    auto audioInfo = m_emulator->getAudioInfo();
+    if (audioInfo.sampleRate > 0) {
+        m_audioOutput->init(audioInfo.sampleRate);
+    }
+
     m_running = true;
     m_paused = false;
     m_frameCount = 0;
@@ -222,6 +232,10 @@ void EmulatorWidget::stopEmulation()
 {
     m_emulationTimer->stop();
     m_running = false;
+
+    if (m_audioOutput) {
+        m_audioOutput->shutdown();
+    }
 
     if (m_emulator) {
         m_emulator->shutdown();
@@ -275,6 +289,14 @@ void EmulatorWidget::onEmulationTick()
     auto [pixels, size] = m_emulator->getFramebuffer();
     if (pixels && size > 0) {
         std::memcpy(m_framebuffer.bits(), pixels, size);
+    }
+
+    // Submit audio samples to the output
+    if (m_audioOutput) {
+        auto [samples, count] = m_emulator->getAudioSamples();
+        if (samples && count > 0) {
+            m_audioOutput->submitSamples(samples, count);
+        }
     }
 
     // Update display

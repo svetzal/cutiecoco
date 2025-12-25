@@ -4,11 +4,13 @@ set(CUTIECOCO_QT_SOURCES
     src/main.cpp
     src/mainwindow.cpp
     src/emulatorwidget.cpp
+    src/qtaudiooutput.cpp
 )
 
 set(CUTIECOCO_QT_HEADERS
     include/mainwindow.h
     include/emulatorwidget.h
+    include/qtaudiooutput.h
 )
 
 add_executable(cutiecoco
@@ -27,6 +29,7 @@ target_link_libraries(cutiecoco PRIVATE
     Qt6::Widgets
     Qt6::OpenGL
     Qt6::OpenGLWidgets
+    Qt6::Multimedia
 )
 
 # Windows-specific settings

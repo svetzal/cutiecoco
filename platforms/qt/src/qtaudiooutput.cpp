@@ -1,0 +1,132 @@
+/*
+Copyright 2024-2025 CutieCoCo Contributors
+This file is part of CutieCoCo.
+
+    CutieCoCo is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    CutieCoCo is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with CutieCoCo.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
+#include "qtaudiooutput.h"
+
+#include <QMediaDevices>
+#include <QAudioDevice>
+#include <QDebug>
+
+QtAudioOutput::QtAudioOutput() = default;
+
+QtAudioOutput::~QtAudioOutput()
+{
+    shutdown();
+}
+
+bool QtAudioOutput::init(uint32_t sampleRate)
+{
+    if (m_initialized) {
+        return true;
+    }
+
+    if (sampleRate == 0) {
+        return false;
+    }
+
+    m_sampleRate = sampleRate;
+
+    // Configure audio format: 16-bit signed mono
+    m_format.setSampleRate(static_cast<int>(sampleRate));
+    m_format.setChannelCount(1);
+    m_format.setSampleFormat(QAudioFormat::Int16);
+
+    // Get default audio output device
+    QAudioDevice audioDevice = QMediaDevices::defaultAudioOutput();
+    if (audioDevice.isNull()) {
+        qWarning() << "QtAudioOutput: No audio output device available";
+        return false;
+    }
+
+    // Check if format is supported
+    if (!audioDevice.isFormatSupported(m_format)) {
+        qWarning() << "QtAudioOutput: Audio format not supported, trying nearest format";
+        // Qt will convert to the nearest supported format
+    }
+
+    // Create audio sink
+    m_audioSink = std::make_unique<QAudioSink>(audioDevice, m_format);
+
+    // Configure buffer size for low latency
+    // Use approximately 4 frames worth of audio (~67ms at 60 Hz)
+    int bufferSize = static_cast<int>(sampleRate / 60 * 4 * sizeof(int16_t));
+    m_audioSink->setBufferSize(bufferSize);
+
+    // Start the audio sink and get the IO device for writing
+    m_audioDevice = m_audioSink->start();
+    if (!m_audioDevice) {
+        qWarning() << "QtAudioOutput: Failed to start audio sink";
+        m_audioSink.reset();
+        return false;
+    }
+
+    m_initialized = true;
+    qDebug() << "QtAudioOutput: Initialized at" << sampleRate << "Hz, buffer size:" << bufferSize;
+    return true;
+}
+
+void QtAudioOutput::shutdown()
+{
+    if (!m_initialized) {
+        return;
+    }
+
+    if (m_audioSink) {
+        m_audioSink->stop();
+        m_audioSink.reset();
+    }
+
+    m_audioDevice = nullptr;
+    m_initialized = false;
+}
+
+void QtAudioOutput::submitSamples(const int16_t* samples, size_t count)
+{
+    if (!m_initialized || !m_audioDevice || samples == nullptr || count == 0) {
+        return;
+    }
+
+    // Write samples to the audio device
+    // Note: This may block if the buffer is full
+    const char* data = reinterpret_cast<const char*>(samples);
+    qint64 bytesToWrite = static_cast<qint64>(count * sizeof(int16_t));
+
+    // Write as much as possible without blocking excessively
+    qint64 bytesWritten = m_audioDevice->write(data, bytesToWrite);
+
+    if (bytesWritten < bytesToWrite) {
+        // Buffer is full, some samples dropped
+        // This is expected during normal operation when audio buffer fills
+    }
+}
+
+size_t QtAudioOutput::getQueuedSampleCount() const
+{
+    if (!m_initialized || !m_audioSink) {
+        return 0;
+    }
+
+    // Get bytes that can still fit in the buffer
+    qsizetype bytesFree = m_audioSink->bytesFree();
+    return static_cast<size_t>(bytesFree / sizeof(int16_t));
+}
+
+uint32_t QtAudioOutput::getSampleRate() const
+{
+    return m_sampleRate;
+}
