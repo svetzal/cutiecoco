@@ -174,9 +174,6 @@ void DebugDrawAudio()
 float RenderFrame (SystemState *RFState)
 {
 	static unsigned int FrameCounter=0;
-	static bool firstFrame = true;
-
-	if (firstFrame) fprintf(stderr, "RenderFrame: starting first frame\n");
 
 	// once per frame
 	LastMotorState = GetMotorState();
@@ -190,59 +187,44 @@ float RenderFrame (SystemState *RFState)
 		BlinkPhase = 0;
 	}
 
-	if (firstFrame) fprintf(stderr, "RenderFrame: VSYNC(0)\n");
 	// VSYNC goes Low
 	VSYNC(0);
 
-	if (firstFrame) fprintf(stderr, "RenderFrame: first HLINE loop\n");
 	// Four lines of blank during VSYNC low
 	for (RFState->LineCounter = 0; RFState->LineCounter < 4; RFState->LineCounter++)
 	{
-		if (firstFrame) fprintf(stderr, "RenderFrame: HLINE %d\n", RFState->LineCounter);
 		HLINE();
 	}
 
-	if (firstFrame) { fprintf(stderr, "RenderFrame: VSYNC(1)\n"); fflush(stderr); }
 	// VSYNC goes High
 	VSYNC(1);
 
-	if (firstFrame) { fprintf(stderr, "RenderFrame: second HLINE loop (3 lines)\n"); fflush(stderr); }
 	// Three lines of blank after VSYNC goes high
 	for (RFState->LineCounter = 0; RFState->LineCounter < 3; RFState->LineCounter++)
 	{
-		if (firstFrame) fprintf(stderr, "RenderFrame: HLINE2 %d\n", RFState->LineCounter);
 		HLINE();
 	}
-	if (firstFrame) { fprintf(stderr, "RenderFrame: second loop done\n"); fflush(stderr); }
 
-	if (firstFrame) { fprintf(stderr, "RenderFrame: offscreen loop (%d lines)\n", TopOffScreen); fflush(stderr); }
 	// Top Border actually begins here, but is offscreen
 	for (RFState->LineCounter = 0; RFState->LineCounter < TopOffScreen; RFState->LineCounter++)
 	{
 		HLINE();
 	}
-	if (firstFrame) { fprintf(stderr, "RenderFrame: offscreen loop done\n"); fflush(stderr); }
 
 	if (!(FrameCounter % RFState->FrameSkip))
 	{
-		if (firstFrame) { fprintf(stderr, "RenderFrame: LockScreen\n"); fflush(stderr); }
 		if (LockScreen())
 			return 0;
 	}
 
-	if (firstFrame) { fprintf(stderr, "RenderFrame: top border loop (%d lines), BitDepth=%d\n", TopBoarder, RFState->BitDepth); fflush(stderr); }
 	// Visible Top Border begins here. (Remove 4 lines for centering)
 	RFState->Debugger.TraceCaptureScreenEvent(VCC::TraceEvent::ScreenTopBorder, 0);
 	for (RFState->LineCounter = 0; RFState->LineCounter < TopBoarder; RFState->LineCounter++)
 	{
 		HLINE();
 		if (!(FrameCounter % RFState->FrameSkip))
-		{
-			if (firstFrame && RFState->LineCounter == 0) { fprintf(stderr, "RenderFrame: DrawTopBoarder[%d] = %p\n", RFState->BitDepth, (void*)DrawTopBoarder[RFState->BitDepth]); fflush(stderr); }
 			DrawTopBoarder[RFState->BitDepth](RFState);
-		}
 	}
-	if (firstFrame) { fprintf(stderr, "RenderFrame: top border done\n"); fflush(stderr); }
 
 	// Main Screen begins here: LPF = 192, 200 (actually 199), 225
 	RFState->Debugger.TraceCaptureScreenEvent(VCC::TraceEvent::ScreenRender, 0);

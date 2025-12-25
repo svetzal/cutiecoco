@@ -89,7 +89,6 @@ void EmulationThread::reset()
 
 void EmulationThread::initializeEmulation()
 {
-    fprintf(stderr, "Emulation: initializing MMU...\n");
     // Initialize memory subsystem (512K RAM by default)
     unsigned char* memory = MmuInit(_512K);
     if (memory == nullptr) {
@@ -97,7 +96,6 @@ void EmulationThread::initializeEmulation()
         m_framebuffer->clear(0xFF0000FF);  // Red = error
         return;
     }
-    fprintf(stderr, "Emulation: MMU initialized, memory at %p\n", (void*)memory);
 
     // Set up the global EmuState with our framebuffer
     EmuState.PTRsurface32 = m_framebuffer->pixels();
@@ -106,27 +104,21 @@ void EmulationThread::initializeEmulation()
     EmuState.RamBuffer = memory;
     EmuState.EmulationRunning = 1;
     EmuState.WindowSize = VCC::Size(FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT);
-    fprintf(stderr, "Emulation: EmuState configured\n");
 
     // Initialize GIME/SAM (must be before CPU reset to set up ROM pointer)
-    fprintf(stderr, "Emulation: initializing GIME...\n");
     GimeInit();
     GimeReset();
     mc6883_reset();  // Initialize SAM and ROM pointer
-    fprintf(stderr, "Emulation: GIME initialized\n");
 
     // Initialize CPU (default to 6809)
-    fprintf(stderr, "Emulation: initializing CPU...\n");
     MC6809Init();
     MC6809Reset();
-    fprintf(stderr, "Emulation: CPU initialized\n");
 
     // Disable audio for now (no audio backend implemented yet)
     SetAudioRate(0);
 
     // Reset misc (timers, interrupts, etc.)
     MiscReset();
-    fprintf(stderr, "Emulation: initialization complete\n");
 
     // Set the CPUExec function pointer to the real CPU
     // CPUExec is defined in core.cpp at global scope
@@ -137,15 +129,12 @@ void EmulationThread::initializeEmulation()
 
 void EmulationThread::threadMain()
 {
-    fprintf(stderr, "Emulation: thread starting...\n");
     initializeEmulation();
 
     m_frameStartTime = Clock::now();
     m_fpsCounterStartTime = Clock::now();
     m_frameCount = 0;
 
-    fprintf(stderr, "Emulation: entering main loop...\n");
-    int frameNum = 0;
     while (m_running.load()) {
         // Handle reset request
         if (m_resetRequested.load()) {
@@ -163,14 +152,7 @@ void EmulationThread::threadMain()
         auto frameStart = Clock::now();
 
         // Render one frame
-        if (frameNum < 5) {
-            fprintf(stderr, "Emulation: rendering frame %d...\n", frameNum);
-        }
         renderFrame();
-        if (frameNum < 5) {
-            fprintf(stderr, "Emulation: frame %d complete\n", frameNum);
-        }
-        frameNum++;
 
         // Notify callback that frame is ready
         {
