@@ -21,6 +21,7 @@ This file is part of VCC (Virtual Color Computer).
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <algorithm>
 #include "defines.h"
 #include "hd6309.h"
 #include "hd6309defs.h"
