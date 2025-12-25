@@ -19,11 +19,16 @@ The `qt` branch contains the cross-platform port. Key changes:
 - Qt application skeleton (`qt/`)
 - Compatibility layer for legacy VCC types (`core/include/dream/`)
 - Stub audio system and debugger
+- EmulationThread with std::chrono timing (~60 FPS)
+- Thread-safe frame callback to Qt display widget
+- Stubs for removed Windows functionality (`core/include/dream/stubs.h`)
+- coco3.cpp cleaned of Windows dependencies
 
 **What Remains:**
-- Clean remaining legacy files of Windows dependencies
-- Integrate core emulation into Qt app
-- Implement emulation loop, display, keyboard input
+- Clean remaining legacy files (tcc1014*.cpp, iobus.cpp, pakinterface.cpp)
+- Integrate cleaned emulation files into core library
+- Wire up GIME output to Qt framebuffer
+- Implement keyboard input translation
 
 ## Issue Tracking
 
@@ -66,24 +71,27 @@ core/                    # Platform-independent emulation library
     compat.h             # VCC compatibility layer (includes types + debugger)
     debugger.h           # Stub debugger (no-op implementation)
     audio.h              # Audio interface + NullAudioSystem
+    emulation.h          # EmulationThread class for frame timing
+    stubs.h              # Stubs for removed Windows functionality
   src/
     core.cpp             # Global EmuState definition
     audio.cpp            # Audio factory
+    emulation.cpp        # EmulationThread implementation
 
 qt/                      # Qt application
   include/
     mainwindow.h
-    emulatorwidget.h     # OpenGL display widget
+    emulatorwidget.h     # OpenGL display widget + emulation integration
   src/
     main.cpp
     mainwindow.cpp
     emulatorwidget.cpp
 
 # Legacy files (being cleaned/integrated):
-mc6809.cpp, hd6309.cpp   # CPU emulation
-tcc1014*.cpp             # GIME graphics/MMU
-coco3.cpp                # System coordination
-mc6821.cpp               # PIA (keyboard, joystick, cassette I/O)
+mc6809.cpp, hd6309.cpp   # CPU emulation (cleaned)
+tcc1014*.cpp             # GIME graphics/MMU (needs cleanup)
+coco3.cpp                # System coordination (cleaned)
+mc6821.cpp               # PIA (I/O ports, cleaned)
 ```
 
 ### Compatibility Layer
@@ -108,7 +116,7 @@ The `core/include/dream/compat.h` header provides VCC-compatible types so legacy
 | `mc6809.cpp` | Motorola 6809 CPU | Cleaned |
 | `hd6309.cpp` | Hitachi 6309 CPU | Cleaned |
 | `mc6821.cpp/h` | PIA (I/O ports) | Cleaned |
-| `coco3.cpp` | System emulation | Needs cleanup |
+| `coco3.cpp` | System emulation loop | Cleaned |
 | `tcc1014graphics.cpp` | GIME video | Needs cleanup |
 | `tcc1014mmu.cpp` | Memory management | Needs cleanup |
 | `tcc1014registers.cpp` | GIME registers | Needs cleanup |
@@ -119,10 +127,11 @@ The `core/include/dream/compat.h` header provides VCC-compatible types so legacy
 
 When cleaning a legacy file of Windows dependencies:
 
-1. **Remove Windows includes:**
+1. **Remove Windows includes and add stubs.h:**
    ```cpp
    // Remove these:
    #include <Windows.h>
+   #include "ddraw.h"
    #include "Debugger.h"      // Deleted
    #include "Disassembler.h"  // Deleted
    #include "keyboard.h"      // Deleted
@@ -130,6 +139,12 @@ When cleaning a legacy file of Windows dependencies:
    #include "Cassette.h"      // Deleted
    #include "config.h"        // Deleted
    #include "audio.h"         // Old Windows version, deleted
+   #include "DirectDrawInterface.h" // Deleted
+   #include "Vcc.h"           // Deleted
+   #include "throttle.h"      // Windows timing, deleted
+
+   // Add this for stub implementations:
+   #include "dream/stubs.h"
    ```
 
 2. **Keep defines.h** - it now redirects to `dream/compat.h`
@@ -139,6 +154,7 @@ When cleaning a legacy file of Windows dependencies:
    - `TRUE/FALSE` → `true/false`
    - `HANDLE` → `FILE*` or appropriate type
    - `HWND`, `HINSTANCE` → `void*` (in SystemState)
+   - `_inline` → `inline` (MSVC-specific keyword)
 
 4. **Remove MSVC pragmas:**
    ```cpp
@@ -146,17 +162,28 @@ When cleaning a legacy file of Windows dependencies:
    #pragma warning( disable : 4800 )
    ```
 
-5. **Stub removed functionality:**
-   ```cpp
-   // For removed keyboard/joystick/cassette:
-   static unsigned char vccKeyboardGetScan(unsigned char) { return 0; }
-   static unsigned short get_joyStick_input(int) { return 0; }
-   ```
+5. **Use stubs.h for removed functionality:**
+   The `core/include/dream/stubs.h` provides inline stubs for functions from deleted modules:
+   - Cassette: `GetMotorState()`, `FlushCassetteBuffer()`, `GetCasSample()`, etc.
+   - Audio: `GetFreeBlockCount()`, `FlushAudioBuffer()`, `GetDACSample()`, etc.
+   - Display: `LockScreen()`, `UnlockScreen()`, `GetMem()`
+   - Throttle: `CalculateFPS()`, `StartRender()`, `EndRender()`
+
+   If you need a stub that doesn't exist, add it to stubs.h with a sensible default value.
 
 6. **Use C++ standard headers:**
    - `<stdio.h>` → `<cstdio>`
    - `<stdlib.h>` → `<cstdlib>`
    - `<string.h>` → `<cstring>`
+   - `<math.h>` → `<cmath>`
+
+7. **Stub Windows-only features entirely:**
+   Functions like clipboard paste (`PasteText`, `CopyText`) should be stubbed with TODO comments:
+   ```cpp
+   void PasteText() {
+       // TODO: Implement with Qt clipboard
+   }
+   ```
 
 ## libcommon
 
@@ -179,3 +206,78 @@ Windows-specific components have been removed:
 - Prefer `<cstdio>` over `<stdio.h>` style includes
 - Use `bool` not `BOOL`
 - Core emulation should have no platform dependencies
+
+## EmulationThread Pattern
+
+The `dream::EmulationThread` class (`core/include/dream/emulation.h`) runs the emulation loop in a separate thread:
+
+```cpp
+// Start emulation with a frame callback
+m_emulation->start([this](const uint8_t* pixels, int width, int height) {
+    onEmulatorFrame(pixels, width, height);
+});
+
+// Control emulation
+m_emulation->pause();
+m_emulation->resume();
+m_emulation->reset();
+m_emulation->stop();
+```
+
+**Key design points:**
+- Uses `std::chrono::steady_clock` for precise frame timing (~59.923 Hz)
+- Frame callback is invoked from the emulation thread
+- Use mutex + signal to safely pass frame data to Qt main thread
+
+## Qt Thread Safety
+
+Qt UI must be updated from the main thread. The `EmulatorWidget` uses this pattern:
+
+```cpp
+// In emulatorwidget.h - signal for cross-thread notification
+signals:
+    void frameReady();
+
+// In constructor - connect with QueuedConnection for thread safety
+connect(this, &EmulatorWidget::frameReady,
+        this, &EmulatorWidget::onFrameReady, Qt::QueuedConnection);
+
+// Callback from emulation thread
+void EmulatorWidget::onEmulatorFrame(const uint8_t* pixels, int w, int h) {
+    {
+        std::lock_guard<std::mutex> lock(m_framebufferMutex);
+        std::memcpy(m_pendingFrame.data(), pixels, w * h * 4);
+        m_frameUpdated = true;
+    }
+    emit frameReady();  // Signal main thread
+}
+
+// Slot on main thread - safe to update Qt objects
+void EmulatorWidget::onFrameReady() {
+    std::lock_guard<std::mutex> lock(m_framebufferMutex);
+    if (m_frameUpdated) {
+        std::memcpy(m_framebuffer.bits(), m_pendingFrame.data(), ...);
+        m_frameUpdated = false;
+    }
+}
+```
+
+## Integrating Legacy Emulation
+
+To integrate a cleaned legacy file:
+
+1. Add it to `core/CMakeLists.txt`:
+   ```cmake
+   add_library(dream-core STATIC
+       src/core.cpp
+       src/audio.cpp
+       src/emulation.cpp
+       ${CMAKE_SOURCE_DIR}/coco3.cpp  # Legacy file
+   )
+   ```
+
+2. Ensure it includes `dream/stubs.h` for missing dependencies
+
+3. The legacy code uses globals (`EmuState`) defined in `core/src/core.cpp`
+
+4. Test compilation before integrating more files - errors cascade quickly
