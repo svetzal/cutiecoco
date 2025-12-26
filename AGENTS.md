@@ -79,6 +79,7 @@ emulation/               # Platform-independent emulation library
     compat.h             # VCC compatibility layer (includes types + debugger)
     emulator.h           # Public CocoEmulator API
     interfaces.h         # Platform abstraction interfaces
+    context.h            # EmulationContext singleton for platform services
     keyboard.h           # Keyboard matrix types and Keyboard class
     keymapping.h         # Character-to-CoCo key translation (shared)
     framebuffer.h        # IFrameBuffer interface
@@ -86,6 +87,7 @@ emulation/               # Platform-independent emulation library
     stubs.h              # Stubs for removed Windows functionality
   src/
     core.cpp             # Global EmuState definition
+    context.cpp          # EmulationContext singleton implementation
     cocoemu.cpp          # CocoEmulator implementation (main entry point)
     emulation.cpp        # EmulationThread implementation
     keyboard.cpp         # Keyboard matrix handling
@@ -134,6 +136,12 @@ shared/
   3rdparty/              # Third-party headers (GL, stb)
   resources/             # Icons, graphics resources
   system-roms/           # CoCo 3 system ROM files
+
+tests/                   # Unit tests (Catch2)
+  CMakeLists.txt         # Test target configuration
+  cpu_test_harness.h     # CPUTestHarness class
+  cpu_test_harness.cpp   # Test harness implementation
+  mc6809_tests.cpp       # MC6809 CPU instruction tests
 ```
 
 ### Public Emulation API
@@ -398,6 +406,18 @@ Windows-specific components have been removed:
 - Prefer `<cstdio>` over `<stdio.h>` style includes
 - Use `bool` not `BOOL`
 - Core emulation should have no platform dependencies
+
+### Hardware Behavior Preservation
+
+**CRITICAL:** This is an emulator of a retro computer. The behaviors codified in the emulation modules are **REQUIRED** because they reflect **ACTUAL HARDWARE BEHAVIORS**.
+
+Do NOT:
+- "Optimize" emulation code that seems inefficient
+- Remove seemingly redundant operations
+- Simplify timing loops or cycle counting
+- Change instruction behavior to be "simpler"
+
+The original hardware had specific timing, quirks, and behaviors that software depends on. What looks like inefficiency is often accurate hardware emulation. When in doubt, preserve the existing behavior and add a comment explaining why it might look unusual.
 
 ## Emulation Execution Models
 
@@ -1225,6 +1245,45 @@ The codebase has two abstraction mechanisms:
 
 **Migration strategy:** Refactor legacy code incrementally to use interfaces instead of stubs. The `CocoEmulator` class already uses a pull model where platforms call `getFramebuffer()` and `getAudioSamples()` rather than receiving callbacks.
 
+### EmulationContext Pattern
+
+The `EmulationContext` singleton (`emulation/include/cutie/context.h`) bridges the gap between stubs and interfaces. It allows platforms to inject real implementations while legacy code continues to use simple function calls.
+
+**Architecture:**
+```cpp
+// Platform sets up implementations once at startup
+auto& ctx = cutie::EmulationContext::instance();
+ctx.setAudioOutput(&myAudioBackend);
+ctx.setSystemRomPath("/path/to/roms");
+ctx.setMessageHandler([](const char* msg, const char* title) {
+    QMessageBox::warning(nullptr, title, msg);
+});
+
+// Legacy code calls stubs, which delegate to EmulationContext
+GetFreeBlockCount();  // → vccContextGetAudioFreeBlocks() → ctx.audioOutput()->...
+MessageBox(...);      // → vccContextShowMessage() → ctx.messageHandler()
+PakGetSystemRomPath(); // → vccContextGetSystemRomPath() → ctx.systemRomPath()
+```
+
+**C-compatible wrappers:** The context provides `extern "C"` functions for use by legacy C-style code:
+- `vccContextGetAudioFreeBlocks()` - Returns audio buffer free space
+- `vccContextShowMessage(msg, title)` - Displays message to user
+- `vccContextGetSystemRomPath()` - Returns path to system ROMs
+
+**Default behaviors:**
+- Audio: Returns 0 free blocks (no audio backend)
+- Messages: Prints to stderr
+- ROM path: Returns empty string (falls back to working directory)
+
+**Usage in stubs.h:**
+```cpp
+inline int GetFreeBlockCount() {
+    return vccContextGetAudioFreeBlocks();  // Delegates to context
+}
+```
+
+This pattern allows gradual migration: stubs can be updated one at a time to delegate to the context, and platforms can inject real implementations as they're developed.
+
 ### Menu System
 
 **Qt platform:** Uses native `QMenu`/`QAction` directly. The menus are defined in `mainwindow.cpp::createMenus()`.
@@ -1238,10 +1297,57 @@ The codebase has two abstraction mechanisms:
 
 ### Testing Infrastructure
 
-**Current state:** No test framework is set up. The project needs:
-1. CMake testing configuration (`enable_testing()`, `add_test()`)
-2. Test framework (Catch2 or GoogleTest recommended)
-3. Test executable linking against `cutie-emulation` library
+The project uses Catch2 for unit testing, fetched via CMake FetchContent.
+
+**Build and run tests:**
+```bash
+cd build
+cmake --build . --target cpu_tests
+ctest --output-on-failure
+```
+
+**Test structure:**
+```
+tests/
+  CMakeLists.txt          # Test target configuration
+  cpu_test_harness.h      # CPUTestHarness class, CCFlag enum
+  cpu_test_harness.cpp    # Test harness implementation
+  mc6809_tests.cpp        # MC6809 instruction tests (32 tests)
+```
+
+**Adding new tests:** Add new `*_tests.cpp` files to `tests/CMakeLists.txt`.
+
+### CPU Testing Notes
+
+**CRITICAL:** The CoCo 3 MMU maps addresses $FF00-$FFFF to I/O ports, NOT RAM. This means:
+- The reset vector at $FFFE-$FFFF reads from `port_read()`, not memory
+- Writing test code to $FFFE won't work - it goes to I/O space
+- Use `MC6809ForcePC(address)` to set PC directly instead of the reset mechanism
+
+**Test harness pattern:**
+```cpp
+// Load test program to RAM (below $FF00)
+harness.loadProgram(0x1000, {0x86, 0x42, 0x12});  // LDA #$42, NOP
+
+// Set PC directly (bypasses reset vector)
+harness.setPC(0x1000);
+
+// Execute minimal cycles (2 is enough for most instructions)
+harness.step();  // Internally calls MC6809Exec(2)
+
+// Check results
+auto state = harness.getState();
+REQUIRE(state.A == 0x42);
+```
+
+**Common CPU test issues:**
+
+| Issue | Cause | Fix |
+|-------|-------|-----|
+| PC reads garbage | Using reset vector in I/O space | Use `MC6809ForcePC()` |
+| Multiple instructions execute | Too many cycles in step() | Use `MC6809Exec(2)` |
+| state.D always 0 | `MC6809GetState()` not populating D | Add `regs.D = D_REG;` |
+| GimeInit undefined | Missing include | Add `#include "tcc1014graphics.h"` |
 
 **CPU testing approach:** Use test vectors from known-good emulators or hardware tests to verify instruction execution. The CPU files are large (mc6809.cpp: 74KB, hd6309.cpp: 150KB) so comprehensive testing is valuable but time-consuming.
 
