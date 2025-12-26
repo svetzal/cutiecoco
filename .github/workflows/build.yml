@@ -58,7 +58,7 @@ jobs:
       - name: Bundle Qt Frameworks (macOS)
         if: runner.os == 'macOS'
         run: |
-          APP_PATH="build/qt/cutiecoco.app"
+          APP_PATH="build/platforms/qt/cutiecoco.app"
 
           # macdeployqt bundles Qt frameworks into the app
           macdeployqt "$APP_PATH" -verbose=2
@@ -114,7 +114,7 @@ jobs:
         env:
           SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
         run: |
-          APP_PATH="build/qt/cutiecoco.app"
+          APP_PATH="build/platforms/qt/cutiecoco.app"
 
           # Sign Qt frameworks
           find "$APP_PATH/Contents/Frameworks" -name "*.framework" -type d | while read framework; do
@@ -150,7 +150,7 @@ jobs:
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          APP_PATH="build/qt/cutiecoco.app"
+          APP_PATH="build/platforms/qt/cutiecoco.app"
 
           # Create zip for notarization
           ditto -c -k --keepParent "$APP_PATH" $RUNNER_TEMP/cutiecoco-notarize.zip
@@ -168,7 +168,7 @@ jobs:
       - name: Package (macOS)
         if: runner.os == 'macOS'
         run: |
-          cd build/qt
+          cd build/platforms/qt
           # Create a distributable app bundle using ditto to preserve symlinks
           ditto -c -k --sequesterRsrc --keepParent cutiecoco.app cutiecoco-macos.zip
 
@@ -182,14 +182,14 @@ jobs:
           mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
 
           # Copy executable
-          cp build/qt/cutiecoco AppDir/usr/bin/
+          cp build/platforms/qt/cutiecoco AppDir/usr/bin/
 
           # Copy system ROM (next to executable)
           cp system-roms/coco3.rom AppDir/usr/bin/system-roms/
 
           # Copy desktop file
-          cp qt/cutiecoco.desktop AppDir/usr/share/applications/
-          cp qt/cutiecoco.desktop AppDir/  # Also at root for linuxdeployqt
+          cp platforms/qt/cutiecoco.desktop AppDir/usr/share/applications/
+          cp platforms/qt/cutiecoco.desktop AppDir/  # Also at root for linuxdeployqt
 
           # Create a simple icon (placeholder - you can replace with a real icon later)
           convert -size 256x256 xc:'#6B46C1' AppDir/usr/share/icons/hicolor/256x256/apps/cutiecoco.png
@@ -209,12 +209,12 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          cd build/qt/Release
+          cd build/platforms/qt/Release
           mkdir package
           mkdir package/system-roms
           copy cutiecoco.exe package/
           # Copy system ROM
-          copy ../../../system-roms/coco3.rom package/system-roms/
+          copy ../../../../system-roms/coco3.rom package/system-roms/
           # Use windeployqt to bundle Qt DLLs
           windeployqt --release --no-translations package/cutiecoco.exe
           Compress-Archive -Path package/* -DestinationPath ../cutiecoco-windows.zip
@@ -224,7 +224,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: build/qt/cutiecoco-macos.zip
+          path: build/platforms/qt/cutiecoco-macos.zip
 
       - name: Upload artifact (Linux)
         if: runner.os == 'Linux'
@@ -238,7 +238,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: build/qt/cutiecoco-windows.zip
+          path: build/platforms/qt/cutiecoco-windows.zip
 
   release:
     needs: build

@@ -6,546 +6,157 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 CutieCoCo is a cross-platform Tandy Color Computer 3 (CoCo 3) emulator built with Qt. It is derived from the VCC (Virtual Color Computer) emulator lineage: VCC → VCCE → DREAM-VCC → CutieCoCo. The emulator supports a 128K CoCo 3 with memory expansion up to 8192K, and both Motorola 6809 and Hitachi 6309 CPUs.
 
-## Current State: Qt Port In Progress
+## Current State
 
-The `qt` branch contains the cross-platform port. Key changes:
-- CMake replaces Visual Studio build system
-- Qt6 replaces Windows-specific UI/graphics/audio
-- Windows-specific code has been removed; legacy emulation files are being cleaned
-
-**What's Done:**
-- CMake build system with Qt6 dependencies
-- Core library structure (`core/`)
-- Qt application skeleton (`qt/`)
-- Compatibility layer for legacy VCC types (`core/include/dream/`)
-- Stub audio system and debugger
-- EmulationThread with std::chrono timing (~60 FPS)
-- Thread-safe frame callback to Qt display widget
-- Stubs for removed Windows functionality (`core/include/dream/stubs.h`)
-- coco3.cpp cleaned of Windows dependencies
-- Keyboard input with character-based mapping (`core/src/keyboard.cpp`)
-
-**What Remains:**
-- Clean remaining legacy files (pakinterface.cpp)
-- Audio output via Qt
-- Joystick input
+- Qt application boots to BASIC prompt with keyboard, audio, joystick (numpad), and cartridge loading
+- CMake build system with monorepo structure: `emulation/`, `platforms/`, `shared/`
+- Windows native platform skeleton exists but needs testing
+- Original Windows VCC code preserved on `dream-vcc/main` branch
 
 ## Issue Tracking
 
 This project uses **bd** (beads) for issue tracking. Run `bd ready` to find available work.
 
-```bash
-bd ready              # Find available work (no blockers)
-bd show <id>          # View issue details
-bd update <id> --status=in_progress  # Claim work
-bd close <id>         # Complete work
-bd sync --from-main   # Sync beads (for ephemeral branches)
-```
-
-## Build Commands (Qt Port)
+## Build Commands
 
 **Requirements:** Qt 6.x, CMake 3.20+
 
 ```bash
-# Configure (adjust Qt path as needed)
 mkdir build && cd build
 cmake .. -DCMAKE_PREFIX_PATH="$HOME/Qt/6.10.1/macos"
-
-# Build
 cmake --build .
-
-# Run (macOS)
-open qt/cutiecoco.app
+open platforms/qt/cutiecoco.app  # macOS
 ```
 
-**Output:** `build/qt/cutiecoco.app` (macOS) or `build/qt/cutiecoco` (Linux)
-
-## Architecture
-
-### Directory Structure
+## Directory Structure
 
 ```
-core/                    # Platform-independent emulation library
-  include/dream/
-    types.h              # Core types (SystemState, Point, Size, Rect)
-    compat.h             # VCC compatibility layer (includes types + debugger)
-    debugger.h           # Stub debugger (no-op implementation)
-    audio.h              # Audio interface + NullAudioSystem
-    emulation.h          # EmulationThread class for frame timing
+emulation/               # Platform-independent emulation library
+  include/cutie/
+    emulator.h           # Public CocoEmulator API
+    interfaces.h         # Platform abstraction interfaces (IVideoOutput, IAudioOutput, etc.)
+    context.h            # EmulationContext singleton for platform services
+    compat.h             # VCC compatibility layer (defines.h redirects here)
     stubs.h              # Stubs for removed Windows functionality
+    keyboard.h, keymapping.h  # Keyboard handling
   src/
-    core.cpp             # Global EmuState definition
-    audio.cpp            # Audio factory
-    emulation.cpp        # EmulationThread implementation
+    cocoemu.cpp          # CocoEmulator implementation
+  # Legacy emulation files: mc6809.cpp, hd6309.cpp, tcc1014*.cpp, coco3.cpp, mc6821.cpp, iobus.cpp
+  libcommon/             # Shared utilities (logger, bus, media)
 
-qt/                      # Qt application
-  include/
-    mainwindow.h
-    emulatorwidget.h     # OpenGL display widget + emulation integration
-  src/
-    main.cpp
-    mainwindow.cpp
-    emulatorwidget.cpp
+platforms/
+  qt/                    # Qt application (cross-platform)
+  windows/               # Windows native application (skeleton)
 
-# Legacy files (being cleaned/integrated):
-mc6809.cpp, hd6309.cpp   # CPU emulation (cleaned)
-tcc1014*.cpp             # GIME graphics/MMU (needs cleanup)
-coco3.cpp                # System coordination (cleaned)
-mc6821.cpp               # PIA (I/O ports, cleaned)
+shared/
+  system-roms/           # CoCo 3 system ROM files (coco3.rom)
+
+tests/                   # Catch2 unit tests
 ```
 
-### Compatibility Layer
-
-The `core/include/dream/compat.h` header provides VCC-compatible types so legacy code can compile with minimal changes:
+## Public Emulation API
 
 ```cpp
-// Legacy code includes this:
-#include "defines.h"      // Redirects to dream/compat.h
+namespace cutie {
+enum class MemorySize { Mem128K, Mem512K, Mem2M, Mem8M };  // Mem prefix avoids legacy macro conflicts
+enum class CpuType { MC6809, HD6309 };
 
-// Provides:
-// - SystemState struct with EmuState global
-// - VCC::Point, VCC::Size, VCC::Rect
-// - VCC::Debugger::Debugger (stub)
-// - Legacy constants (FRAMEINTERVAL, COLORBURST, etc.)
-```
-
-### Core Emulation Files
-
-| File | Purpose | Cleanup Status |
-|------|---------|----------------|
-| `mc6809.cpp/h` | Motorola 6809 CPU | Cleaned (not yet integrated) |
-| `hd6309.cpp/h` | Hitachi 6309 CPU | Cleaned (not yet integrated) |
-| `mc6821.cpp/h` | PIA (I/O ports) | Cleaned (has real implementations that conflict with stubs) |
-| `coco3.cpp` | System emulation loop | Cleaned (not yet integrated) |
-| `tcc1014graphics.cpp` | GIME video | Cleaned |
-| `tcc1014mmu.cpp/h` | Memory management | Cleaned |
-| `tcc1014registers.cpp` | GIME registers | Cleaned |
-| `iobus.cpp` | I/O bus | Cleaned |
-| `pakinterface.cpp` | Cartridge interface | Heavy Windows deps, needs major work |
-
-### Emulation File Dependencies
-
-The emulation files have deep interconnections. Understanding these is critical before integration:
-
-```
-coco3.cpp
-├── CPUExec (function pointer to MC6809Exec or HD6309Exec)
-├── mc6821.cpp (PIA - defines GetMuxState, GetDACSample, etc.)
-├── tcc1014*.cpp (GIME)
-└── pakinterface.cpp (cartridge)
-
-mc6821.cpp
-├── CPUAssertInterupt/CPUDeAssertInterupt (from CPU files)
-├── vccJoystickStart* (joystick input - needs stubs)
-├── Motor() (cassette - needs stub)
-└── PackAudioSample() (from pakinterface)
-
-pakinterface.cpp
-├── vcc/ui/menu/* (deleted - needs major refactoring)
-├── vcc/utils/cartridge_loader (may work)
-└── Windows DLL loading (needs replacement)
-```
-
-## Cleaning Legacy Files
-
-When cleaning a legacy file of Windows dependencies:
-
-1. **Remove Windows includes and add stubs.h:**
-   ```cpp
-   // Remove these:
-   #include <Windows.h>
-   #include "ddraw.h"
-   #include "Debugger.h"      // Deleted
-   #include "Disassembler.h"  // Deleted
-   #include "keyboard.h"      // Deleted
-   #include "joystickinput.h" // Deleted
-   #include "Cassette.h"      // Deleted
-   #include "config.h"        // Deleted
-   #include "audio.h"         // Old Windows version, deleted
-   #include "DirectDrawInterface.h" // Deleted
-   #include "Vcc.h"           // Deleted
-   #include "throttle.h"      // Windows timing, deleted
-   #include "pakinterface.h"  // Heavy deps, use stubs instead
-   #include "OpDecoder.h"     // Debugger, not needed for emulation
-
-   // Add this for stub implementations:
-   #include "dream/stubs.h"
-   ```
-
-2. **Keep defines.h** - it now redirects to `dream/compat.h`
-
-3. **Replace Windows types:**
-   - `BOOL` → `bool`
-   - `TRUE/FALSE` → `true/false`
-   - `HANDLE` → `FILE*` or appropriate type
-   - `HWND`, `HINSTANCE` → `void*` (in SystemState)
-   - `_inline` → `inline` (MSVC-specific keyword)
-   - `__fastcall` → remove (MSVC calling convention)
-
-4. **Remove MSVC pragmas:**
-   ```cpp
-   // Remove:
-   #pragma warning( disable : 4800 )
-   ```
-
-5. **Fix headers before cpp files:**
-   Headers often need includes added. Common missing includes:
-   ```cpp
-   #include <vector>           // For std::vector in function signatures
-   #include "dream/compat.h"   // For VCC::CPUState
-   ```
-
-6. **Use stubs.h for removed functionality:**
-   The `core/include/dream/stubs.h` provides inline stubs for functions from deleted modules:
-   - Cassette: `GetMotorState()`, `FlushCassetteBuffer()`, `GetCasSample()`, etc.
-   - Audio: `GetFreeBlockCount()`, `FlushAudioBuffer()`, `GetDACSample()`, `AUDIO_RATE`
-   - Display: `LockScreen()`, `UnlockScreen()`, `GetMem()`
-   - Throttle: `CalculateFPS()`, `StartRender()`, `EndRender()`
-   - Config: `GetUseCustomSystemRom()`, `GetCustomSystemRomPath()`
-   - Pak: `PakGetSystemRomPath()`, `PackMem8Read()`, `PakReadPort()`, `PakWritePort()`, `PakTimer()`
-   - CPU: `CPUExec` function pointer (defaults to stub, set to MC6809Exec/HD6309Exec)
-   - Windows API: `MessageBox()` (prints to stderr)
-
-   If you need a stub that doesn't exist, add it to stubs.h with a sensible default value.
-
-7. **Use C++ standard headers:**
-   - `<stdio.h>` → `<cstdio>`
-   - `<stdlib.h>` → `<cstdlib>`
-   - `<string.h>` → `<cstring>`
-   - `<math.h>` → `<cmath>`
-
-8. **Stub Windows-only features entirely:**
-   Functions like clipboard paste (`PasteText`, `CopyText`) should be stubbed with TODO comments:
-   ```cpp
-   void PasteText() {
-       // TODO: Implement with Qt clipboard
-   }
-   ```
-
-### Stub Conflicts
-
-**IMPORTANT:** Some files define real implementations that conflict with stubs. When integrating:
-
-- `mc6821.cpp` defines `GetDACSample()`, `GetCasSample()`, `SetCassetteSample()`, `GetMuxState()`
-- These conflict with inline stubs in `stubs.h`
-
-**Solution options:**
-1. Remove conflicting stubs from `stubs.h` when integrating the real file
-2. Use `#ifndef` guards around stubs
-3. Reorganize stubs into categories that can be selectively included
-
-### VCC::CPUState vs dream::CPUState
-
-The `VCC::CPUState` is an alias to `dream::CPUState` (defined in `types.h`). When adding CPU register fields:
-- Add to `dream::CPUState` in `core/include/dream/types.h`
-- Do NOT add a separate struct in `compat.h` (will conflict)
-
-Current CPUState fields:
-```cpp
-struct CPUState {
-    uint16_t PC, X, Y, U, S, DP, D;
-    uint8_t A, B, CC, E, F;
-    uint8_t MD;           // 6309 mode register
-    uint16_t V;           // 6309 V register
-    bool IsNative6309;    // True if in native 6309 mode
+class CocoEmulator {
+    static std::unique_ptr<CocoEmulator> create(const EmulatorConfig& config = {});
+    bool init();
+    void reset();
+    void runFrame();                                         // Synchronous - caller controls timing
+    std::pair<const uint8_t*, size_t> getFramebuffer() const;
+    std::pair<const int16_t*, size_t> getAudioSamples() const;
+    void setKeyState(int row, int col, bool pressed);
 };
+}
 ```
 
-## libcommon
-
-Platform-independent components (still usable):
-- `vcc/bus/` - Cartridge interfaces
-- `vcc/media/` - Disk image handling (JVC, VHD, DMK)
-- `vcc/devices/` - ROM, PSG, RTC, serial
-- `vcc/utils/logger.h` - Logging
-
-Windows-specific components have been removed:
-- `vcc/ui/` - Deleted (was Windows dialogs)
-- `vcc/utils/winapi.h` - Deleted
-- `vcc/utils/FileOps.h` - Deleted
-- `vcc/utils/filesystem.h` - Deleted
+**API Gotchas:**
+- `getCpuType()` returns default before `init()` - must call `init()` first
+- `getFramebufferInfo().pitch` is in **pixels, not bytes**
+- Framebuffer is 640x480 (doubled from native CoCo resolutions)
 
 ## Code Conventions
 
-- Legacy code uses `EmuState` global and `VCC::` namespace
-- New code should use `dream::` namespace
-- Prefer `<cstdio>` over `<stdio.h>` style includes
-- Use `bool` not `BOOL`
-- Core emulation should have no platform dependencies
+- Legacy code: `EmuState` global, `VCC::` namespace
+- New code: `cutie::` namespace
+- Core emulation has no platform dependencies
 
-## EmulationThread Pattern
+## Hardware Behavior Preservation
 
-The `dream::EmulationThread` class (`core/include/dream/emulation.h`) runs the emulation loop in a separate thread:
+**CRITICAL:** This is an emulator. The behaviors in emulation modules reflect **ACTUAL HARDWARE BEHAVIORS** that software depends on.
+
+Do NOT:
+- "Optimize" emulation code that seems inefficient
+- Remove seemingly redundant operations
+- Simplify timing loops or cycle counting
+- Change instruction behavior
+
+What looks like inefficiency is often accurate hardware emulation.
+
+## Key Architectural Decisions
+
+### Execution Model
+
+CocoEmulator uses a **synchronous, pull-based API**. The platform controls timing via timer-driven `runFrame()` calls, not callbacks. This avoids thread synchronization complexity.
+
+### EmulationContext Pattern
+
+The `EmulationContext` singleton bridges legacy stubs and modern interfaces. Platforms inject implementations at startup:
 
 ```cpp
-// Start emulation with a frame callback
-m_emulation->start([this](const uint8_t* pixels, int width, int height) {
-    onEmulatorFrame(pixels, width, height);
-});
-
-// Control emulation
-m_emulation->pause();
-m_emulation->resume();
-m_emulation->reset();
-m_emulation->stop();
+auto& ctx = cutie::EmulationContext::instance();
+ctx.setAudioOutput(&myAudioBackend);
+ctx.setSystemRomPath("/path/to/roms");
 ```
 
-**Key design points:**
-- Uses `std::chrono::steady_clock` for precise frame timing (~59.923 Hz)
-- Frame callback is invoked from the emulation thread
-- Use mutex + signal to safely pass frame data to Qt main thread
+Legacy code calls stubs → stubs delegate to EmulationContext → context uses injected implementations.
 
-## Qt Thread Safety
+### Stubs vs Interfaces
 
-Qt UI must be updated from the main thread. The `EmulatorWidget` uses this pattern:
+- `stubs.h` - Inline stubs for legacy VCC code compatibility (being replaced gradually)
+- `interfaces.h` - Abstract C++ interfaces for new code (IVideoOutput, IAudioOutput, etc.)
 
-```cpp
-// In emulatorwidget.h - signal for cross-thread notification
-signals:
-    void frameReady();
+## Critical Gotchas
 
-// In constructor - connect with QueuedConnection for thread safety
-connect(this, &EmulatorWidget::frameReady,
-        this, &EmulatorWidget::onFrameReady, Qt::QueuedConnection);
+### Qt HiDPI/Retina Displays
 
-// Callback from emulation thread
-void EmulatorWidget::onEmulatorFrame(const uint8_t* pixels, int w, int h) {
-    {
-        std::lock_guard<std::mutex> lock(m_framebufferMutex);
-        std::memcpy(m_pendingFrame.data(), pixels, w * h * 4);
-        m_frameUpdated = true;
-    }
-    emit frameReady();  // Signal main thread
-}
-
-// Slot on main thread - safe to update Qt objects
-void EmulatorWidget::onFrameReady() {
-    std::lock_guard<std::mutex> lock(m_framebufferMutex);
-    if (m_frameUpdated) {
-        std::memcpy(m_framebuffer.bits(), m_pendingFrame.data(), ...);
-        m_frameUpdated = false;
-    }
-}
-```
-
-## Qt OpenGL and HiDPI Displays
-
-**CRITICAL:** On HiDPI/Retina displays, Qt's `QOpenGLWidget` requires special handling for viewport calculations.
-
-### The Problem
-
-On a 2x Retina display:
-- Widget logical size: 640×480
-- Actual OpenGL framebuffer: 1280×960
-- If you use logical dimensions for `glViewport()`, content renders at 1/4 size in the bottom-left corner
-
-### The Solution
-
-Despite what Qt documentation may suggest, `resizeGL(int w, int h)` receives **logical pixels**, not device pixels. You must multiply by `devicePixelRatio()`:
+`resizeGL(int w, int h)` receives **logical pixels**. Multiply by `devicePixelRatio()` for `glViewport()`:
 
 ```cpp
-void EmulatorWidget::resizeGL(int w, int h)
-{
-    // Qt passes logical pixels - multiply by DPR for actual framebuffer size
+void resizeGL(int w, int h) {
     qreal dpr = devicePixelRatio();
-    int deviceWidth = static_cast<int>(w * dpr);
-    int deviceHeight = static_cast<int>(h * dpr);
-
-    // Use device dimensions for all viewport calculations
-    glViewport(0, 0, deviceWidth, deviceHeight);
+    glViewport(0, 0, static_cast<int>(w * dpr), static_cast<int>(h * dpr));
 }
 ```
 
-### Symptoms of Incorrect HiDPI Handling
+Symptom of getting this wrong: content renders at 1/4 size in corner.
 
-| Symptom | Cause |
-|---------|-------|
-| Content at 1/4 size in bottom-left corner | Using logical pixels instead of device pixels for viewport |
-| Content at 1/4 size in top-left corner | Same issue + Y-axis flip |
-| Blurry/scaled content | Texture or framebuffer size mismatch |
+### Emulator Initialization Order
 
-### Debugging HiDPI Issues
+Order matters. Incorrect order causes crashes:
 
-Add temporary debug output to understand the actual dimensions:
+1. `MmuInit()` - allocate RAM, load ROM
+2. Set up `EmuState` (PTRsurface32, SurfacePitch, BitDepth=3, RamBuffer)
+3. `GimeInit()`, `GimeReset()`, `mc6883_reset()` - GIME/SAM before CPU
+4. `MC6809Init()`, `MC6809Reset()` - CPU reads reset vector from ROM
+5. `MiscReset()` - clears audio timing
+6. `SetAudioRate()` - MUST follow MiscReset or infinite loop occurs
 
-```cpp
-fprintf(stderr, "resizeGL: w=%d h=%d, devicePixelRatio=%.2f\n",
-        w, h, devicePixelRatio());
-```
+**BitDepth is an index (0-3), not actual bits.** Use 3 for 32-bit rendering.
 
-On a 2x Retina display, you should see `devicePixelRatio=2.00`. If `w` and `h` match your expected logical size (e.g., 640×480), you need to multiply them by `devicePixelRatio()` for OpenGL calls.
+### CoCo Keyboard Matrix
 
-### Key Points
+The CoCo keyboard wiring is counterintuitive:
+- Port B ($FF02) = Column STROBE **outputs**
+- Port A ($FF00) = Row RETURN **inputs**
 
-1. Store device pixel dimensions calculated in `resizeGL()` for use in `paintGL()`
-2. All `glViewport()` calls must use device pixels
-3. Texture uploads (`glTexImage2D`) use the source image dimensions (unaffected by DPR)
-4. The `width()` and `height()` methods always return logical pixels
-
-## Integrating Legacy Emulation
-
-To integrate a cleaned legacy file:
-
-1. Add it to `core/CMakeLists.txt`:
-   ```cmake
-   add_library(dream-core STATIC
-       src/core.cpp
-       src/audio.cpp
-       src/emulation.cpp
-       ${CMAKE_SOURCE_DIR}/coco3.cpp  # Legacy file
-   )
-   ```
-
-2. Ensure it includes `dream/stubs.h` for missing dependencies
-
-3. The legacy code uses globals (`EmuState`) defined in `core/src/core.cpp`
-
-4. **Test compilation after EACH file** - errors cascade quickly
-
-### Integration Order (Recommended)
-
-Due to dependencies, integrate files in this order:
-
-1. **CPU files first** (`mc6809.cpp`, `hd6309.cpp`)
-   - These are relatively self-contained
-   - Need: `CPUAssertInterupt` stubs (add to stubs.h or compat.h)
-
-2. **GIME files** (`tcc1014mmu.cpp`, `tcc1014registers.cpp`, `tcc1014graphics.cpp`)
-   - Depend on CPU for interrupt assertions
-   - Graphics file is large but mostly self-contained rendering code
-
-3. **I/O files** (`iobus.cpp`, `mc6821.cpp`)
-   - PIA has joystick/cassette dependencies to stub
-   - **WARNING:** mc6821.cpp conflicts with stubs - resolve before adding
-
-4. **System loop** (`coco3.cpp`)
-   - Depends on all of the above
-   - Uses `CPUExec` function pointer (defined in core.cpp)
-
-5. **Cartridge** (`pakinterface.cpp`) - last, needs major refactoring
-
-### Common Integration Errors
-
-| Error | Cause | Fix |
-|-------|-------|-----|
-| `no template named 'vector'` | Header missing `#include <vector>` | Add include to the .h file |
-| `redefinition of 'FunctionName'` | Stub conflicts with real impl | Remove stub or use guards |
-| `use of undeclared identifier` | Missing stub or include | Add to stubs.h or add include |
-| `no member named 'X' in 'CPUState'` | Missing field in types.h | Add to dream::CPUState |
-| `'__declspec' attributes not enabled` | Windows-only export macro | Check libcommon/include/vcc/detail/exports.h has platform guards |
-
-## Emulator Initialization
-
-**CRITICAL:** The emulator initialization order matters. Incorrect order causes crashes.
-
-### Required Initialization Sequence
-
-```cpp
-// 1. Initialize memory (allocates RAM, loads ROM)
-unsigned char* memory = MmuInit(_512K);  // _128K, _512K, or _2M
-
-// 2. Set up SystemState BEFORE any emulation
-EmuState.PTRsurface32 = framebuffer->pixels();
-EmuState.SurfacePitch = framebuffer->pitch();
-EmuState.BitDepth = 3;  // IMPORTANT: Index, not actual bits!
-EmuState.RamBuffer = memory;
-EmuState.EmulationRunning = 1;
-
-// 3. Initialize GIME/SAM BEFORE CPU (sets up ROM pointer)
-GimeInit();
-GimeReset();
-mc6883_reset();  // CRITICAL: Initializes ROM pointer for CPU reset
-
-// 4. NOW initialize CPU (reads reset vector from ROM)
-MC6809Init();
-MC6809Reset();
-
-// 5. Disable audio until backend is implemented
-SetAudioRate(0);  // Prevents buffer overflow crash
-
-// 6. Reset misc systems
-MiscReset();
-
-// 7. Set CPU execution pointer
-CPUExec = MC6809Exec;  // or HD6309Exec
-```
-
-### Common Initialization Pitfalls
-
-| Mistake | Symptom | Fix |
-|---------|---------|-----|
-| CPU reset before `mc6883_reset()` | Crash in `sam_read()` (null ROM pointer) | Call `mc6883_reset()` before `MC6809Reset()` |
-| `BitDepth = 32` instead of `3` | Crash calling null function pointer | Use index: 0=8bit, 1=16bit, 2=24bit, 3=32bit |
-| `SetAudioRate(44100)` without audio backend | Buffer overflow crash in `AudioOut()` | Use `SetAudioRate(0)` to disable |
-| Missing `MmuInit()` | Null pointer crashes everywhere | Always call first |
-
-### BitDepth Values
-
-The `SystemState.BitDepth` field is an **index into function pointer arrays**, not the actual bit depth:
-
-```cpp
-// These arrays are indexed by BitDepth:
-void (*UpdateScreen[4])(SystemState*) = {UpdateScreen8, UpdateScreen16, UpdateScreen24, UpdateScreen32};
-void (*DrawTopBoarder[4])(SystemState*) = {...};
-void (*DrawBottomBoarder[4])(SystemState*) = {...};
-
-// Correct values:
-// BitDepth = 0  →  8-bit rendering
-// BitDepth = 1  →  16-bit rendering
-// BitDepth = 2  →  24-bit rendering
-// BitDepth = 3  →  32-bit rendering (use this for Qt)
-```
-
-### ROM Loading
-
-The system ROM is loaded by `MmuInit()` → `LoadRom()`:
-
-- Default path: `PakGetSystemRomPath() / "coco3.rom"`
-- `PakGetSystemRomPath()` stub returns: `std::filesystem::current_path() / "system-roms"`
-- **Result:** ROM expected at `./system-roms/coco3.rom` relative to working directory
-
-For the Qt app running from `build/`:
-```bash
-mkdir -p build/system-roms
-cp coco3.rom build/system-roms/
-```
-
-### Audio System
-
-The audio system collects samples into a fixed-size buffer (`AudioBuffer[16384]`). Without a real audio backend:
-
-1. `FlushAudioBuffer()` stub does nothing
-2. `AudioIndex` keeps incrementing
-3. Eventually writes past buffer end → crash
-
-**Solution:** Call `SetAudioRate(0)` to disable audio collection until a Qt audio backend is implemented.
-
-## CoCo Keyboard Emulation
-
-**CRITICAL:** The CoCo keyboard matrix wiring is counterintuitive. Getting this wrong causes a perfect row↔column transposition of all keys.
-
-### PIA Keyboard Wiring
-
-The CoCo keyboard connects to PIA0:
-- **Port B ($FF02) = Column STROBE outputs** (directly active low)
-- **Port A ($FF00) = Row RETURN inputs** (directly active low)
-
-This is the **opposite** of what you might expect! Many emulator docs describe it as "rows out, columns in" but the CoCo hardware is wired "columns out, rows in".
-
-### How Keyboard Scanning Works
-
-1. CoCo BASIC writes to $FF02 to select which column(s) to strobe (0 = selected)
-2. CoCo BASIC reads $FF00 to see which rows have a key pressed in those columns (0 = pressed)
-
-For example, to detect 'H' (row 1, column 0):
-1. Output `0xFE` to $FF02 (bit 0 = 0, selecting column 0)
-2. Read $FF00 and check if bit 1 is 0 (row 1 has a key in column 0)
-
-### The Keyboard Matrix
+This is opposite of typical descriptions. The scan function must transpose the matrix.
 
 ```
          Col0  Col1  Col2  Col3  Col4  Col5  Col6  Col7
-         ----  ----  ----  ----  ----  ----  ----  ----
 Row 0:    @     A     B     C     D     E     F     G
 Row 1:    H     I     J     K     L     M     N     O
 Row 2:    P     Q     R     S     T     U     V     W
@@ -555,86 +166,25 @@ Row 5:    8     9     :     ;     ,     -     .     /
 Row 6:   ENT   CLR   BRK   ALT   CTL   F1    F2   SHIFT
 ```
 
-### Scan Function Implementation
+CoCo shift mappings differ from PC: `"` is Shift+2, `'` is Shift+7, etc. Use character-based mapping via `cutie::mapCharToCoco()`.
 
-The scan function must **transpose** the keyboard matrix. We store keys as `m_matrix[row]` with column bits, but when a column is selected, we return which **rows** have that column pressed:
+### CPU Testing
 
-```cpp
-uint8_t Keyboard::scan(uint8_t colMask) const
-{
-    uint8_t result = 0;
-    for (uint8_t col = 0; col < 8; ++col) {
-        if ((colMask & (1 << col)) == 0) {  // Column selected
-            for (uint8_t row = 0; row < 7; ++row) {
-                if (m_matrix[row] & (1 << col)) {
-                    result |= (1 << row);  // Return ROW bits, not column
-                }
-            }
-        }
-    }
-    return ~result;  // Active low
-}
+The CoCo 3 MMU maps $FF00-$FFFF to I/O ports, not RAM. Use `MC6809ForcePC(address)` to set PC directly instead of relying on the reset vector.
+
+## Testing
+
+```bash
+cmake --build . --target cpu_tests
+cmake --build . --target integration_tests
+ctest --output-on-failure
 ```
 
-### Symptoms of Incorrect Row/Column Handling
+Tests use `SKIP()` when system ROM isn't found (CI environments).
 
-If you implement the scan function wrong (returning columns instead of rows), you'll see a perfect transposition:
-- 'H' (row 1, col 0) → 'A' (row 0, col 1)
-- 'E' (row 0, col 5) → '8' (row 5, col 0)
-- 'L' (row 1, col 4) → '1' (row 4, col 1)
-- 'O' (row 1, col 7) → nothing (row 7 doesn't exist!)
+## Original VCC Reference
 
-### Character-Based Keyboard Mapping
-
-The CoCo has different shift mappings than a PC keyboard. For example:
-- PC: `"` is Shift+' (apostrophe)
-- CoCo: `"` is Shift+2
-
-Use **character-based mapping** instead of raw key codes for printable characters:
-
-```cpp
-// Map the actual character to CoCo key combination
-switch (ch) {
-    case '"': return {CocoKey::Key2, true};   // Shift+2
-    case '\'': return {CocoKey::Key7, true};  // Shift+7
-    case '*': return {CocoKey::Colon, true};  // Shift+:
-    case '+': return {CocoKey::Semicolon, true}; // Shift+;
-    // etc.
-}
-```
-
-Key implementation points:
-1. Use `event->text()` in Qt to get the actual character produced
-2. Track which keys have shift "added" so you release shift when the key is released
-3. Non-printable keys (arrows, F-keys, modifiers) still use direct key code mapping
-
-### Files Involved
-
-- `core/include/dream/keyboard.h` - CocoKey enum, Keyboard class
-- `core/src/keyboard.cpp` - Matrix storage and scan function
-- `qt/src/emulatorwidget.cpp` - Qt key event → CoCo key mapping
-- `mc6821.cpp` - PIA calls `vccKeyboardGetScan()` when $FF00 is read
-
-## Troubleshooting
-
-### Build Fails After Adding File
-
-1. **Check for cascading errors** - fix the first error only, rebuild
-2. **Look for conflicting definitions** - stubs.h vs real implementations
-3. **Check header includes** - missing `<vector>`, `<array>`, etc.
-4. **Verify platform guards** - `#ifdef _WIN32` around Windows-specific code
-
-### Missing Function at Link Time
-
-The function exists in a file not yet added to CMakeLists.txt. Either:
-1. Add the source file to the build
-2. Create a stub in stubs.h
-
-### Stub Not Working
-
-Ensure the stub is in stubs.h BEFORE the file that needs it includes stubs.h. Include order:
-```cpp
-#include "defines.h"      // First - redirects to compat.h
-#include "dream/stubs.h"  // Second - provides stubs
-// ... other includes
+Original Windows code is on `dream-vcc/main` branch:
+```bash
+git show dream-vcc/main:config.cpp | head -200
 ```
