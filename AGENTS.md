@@ -27,11 +27,16 @@ The `qt` branch contains the cross-platform port. Key changes:
 - Audio output via Qt using QAudioSink (`platforms/qt/src/qtaudiooutput.cpp`)
 - Joystick input via keyboard numpad emulation
 - Cartridge loading (.rom, .ccc, .pak files) with auto-start support
+- Qt configuration system using QSettings (`platforms/qt/src/appconfig.cpp`)
+- Qt settings dialog with CPU, Audio, Display tabs (`platforms/qt/src/settingsdialog.cpp`)
+- Recent files menu with cartridge history
+- Window geometry persistence
+- Windows native platform skeleton (`platforms/windows/`)
 
 **What Remains:**
-- Settings dialogs (task: DREAM-VCC-wfo)
-- Configuration system (task: DREAM-VCC-cc9)
 - Native joystick/gamepad support (currently keyboard numpad only)
+- Windows platform testing and refinement
+- macOS native platform (planned)
 
 ## Issue Tracking
 
@@ -92,16 +97,36 @@ emulation/               # Platform-independent emulation library
   libcommon/             # Shared utilities (logger, bus, media)
 
 platforms/
-  qt/                    # Qt application
+  qt/                    # Qt application (cross-platform)
     include/
       mainwindow.h
       emulatorwidget.h   # OpenGL display widget + emulation integration
+      appconfig.h        # QSettings-based configuration
+      settingsdialog.h   # Settings dialog (CPU, Audio, Display tabs)
+      qtaudiooutput.h    # QAudioSink audio backend
     src/
       main.cpp
       mainwindow.cpp
       emulatorwidget.cpp
+      appconfig.cpp
+      settingsdialog.cpp
+      qtaudiooutput.cpp
+  windows/               # Windows native application
+    include/
+      mainwindow.h       # Win32 main window
+      win32renderer.h    # GDI renderer
+      win32audio.h       # waveOut audio backend
+      win32input.h       # Keyboard/joystick input handling
+    src/
+      main.cpp           # WinMain entry point
+      mainwindow.cpp
+      win32renderer.cpp
+      win32audio.cpp
+      win32input.cpp
+    resources/
+      cutiecoco.rc       # Version info, icon
+      cutiecoco.manifest # DPI awareness, visual styles
   macos/                 # Future macOS-native application
-  windows/               # Future Windows-native application
 
 shared/
   3rdparty/              # Third-party headers (GL, stb)
@@ -828,6 +853,303 @@ git show dream-vcc/main:config.cpp | head -200
 # Find dialog callbacks
 git show dream-vcc/main:config.cpp | grep -n "CALLBACK"
 ```
+
+## Windows Native Platform
+
+The `platforms/windows/` directory contains a native Windows application that uses Win32 API directly (no Qt dependency).
+
+### Build Configuration
+
+The root `CMakeLists.txt` supports conditional platform builds:
+
+```cmake
+# Build options (configure with -D flags)
+option(CUTIECOCO_BUILD_QT "Build Qt cross-platform application" ON)
+option(CUTIECOCO_BUILD_WINDOWS "Build Windows native application" OFF)
+
+# Windows native build (no Qt required):
+cmake .. -DCUTIECOCO_BUILD_QT=OFF -DCUTIECOCO_BUILD_WINDOWS=ON
+```
+
+### Windows Application Architecture
+
+The Windows platform follows a component-based architecture matching the Qt platform:
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| `MainWindow` | `mainwindow.cpp` | Win32 window, message loop, menu handling |
+| `Win32Renderer` | `win32renderer.cpp` | GDI-based rendering with StretchDIBits |
+| `Win32Audio` | `win32audio.cpp` | waveOut audio backend (double-buffered) |
+| `Win32Input` | `win32input.cpp` | Keyboard mapping, numpad joystick |
+
+### Win32 Message Handling Pattern
+
+The main window uses the standard Win32 pattern with `GWLP_USERDATA` for instance pointer:
+
+```cpp
+LRESULT CALLBACK MainWindow::windowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    MainWindow* self = nullptr;
+
+    if (msg == WM_NCCREATE) {
+        auto cs = reinterpret_cast<CREATESTRUCT*>(lParam);
+        self = static_cast<MainWindow*>(cs->lpCreateParams);
+        SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(self));
+        self->m_hwnd = hwnd;
+    } else {
+        self = reinterpret_cast<MainWindow*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
+    }
+
+    if (self) return self->handleMessage(msg, wParam, lParam);
+    return DefWindowProc(hwnd, msg, wParam, lParam);
+}
+```
+
+### Windows Keyboard Input
+
+Windows keyboard handling requires both `WM_KEYDOWN`/`WM_KEYUP` AND `WM_CHAR`:
+
+- `WM_KEYDOWN/UP`: Virtual key codes for non-printable keys (arrows, F-keys, modifiers)
+- `WM_CHAR`: Actual characters produced (handles shift state correctly)
+
+```cpp
+case WM_KEYDOWN:
+    m_input->handleKeyDown(wParam, lParam);  // For arrows, F-keys, etc.
+    return 0;
+case WM_CHAR:
+    m_input->handleChar(static_cast<wchar_t>(wParam));  // For printable chars
+    return 0;
+case WM_KILLFOCUS:
+    m_input->reset();  // Release all keys when window loses focus
+    return 0;
+```
+
+### GDI Rendering with Aspect Ratio
+
+The `Win32Renderer` uses `StretchDIBits` with aspect ratio preservation:
+
+```cpp
+// Calculate destination rect preserving 4:3 aspect ratio
+float srcAspect = static_cast<float>(srcWidth) / srcHeight;
+float dstAspect = static_cast<float>(m_width) / m_height;
+
+if (srcAspect > dstAspect) {
+    // Letterbox (black bars top/bottom)
+    destHeight = static_cast<int>(m_width / srcAspect);
+    destY = (m_height - destHeight) / 2;
+} else {
+    // Pillarbox (black bars left/right)
+    destWidth = static_cast<int>(m_height * srcAspect);
+    destX = (m_width - destWidth) / 2;
+}
+
+StretchDIBits(hdc, destX, destY, destWidth, destHeight,
+              0, 0, srcWidth, srcHeight, pixels, &bmi, DIB_RGB_COLORS, SRCCOPY);
+```
+
+### Windows DPI Awareness
+
+The manifest file (`cutiecoco.manifest`) declares DPI awareness:
+
+```xml
+<application xmlns="urn:schemas-microsoft-com:asm.v3">
+  <windowsSettings>
+    <dpiAware>true/pm</dpiAware>
+    <dpiAwareness>PerMonitorV2</dpiAwareness>
+  </windowsSettings>
+</application>
+```
+
+This ensures proper scaling on high-DPI displays.
+
+## Qt Configuration System
+
+The Qt platform uses `QSettings` for persistent configuration via the `AppConfig` singleton.
+
+### AppConfig Pattern
+
+```cpp
+// appconfig.h
+class AppConfig : public QObject {
+    Q_OBJECT
+public:
+    static AppConfig& instance();  // Singleton
+
+    // Typed accessors with signals for change notification
+    cutie::MemorySize memorySize() const;
+    void setMemorySize(cutie::MemorySize size);
+
+signals:
+    void memorySizeChanged(cutie::MemorySize size);
+
+private:
+    AppConfig();  // Private constructor
+};
+
+// Usage
+AppConfig::instance().setMemorySize(cutie::MemorySize::Mem512K);
+QString lastDir = AppConfig::instance().lastCartridgeDir();
+```
+
+### Settings Storage
+
+QSettings stores values based on organization/app name set in `main.cpp`:
+
+```cpp
+app.setOrganizationName("CutieCoCo");
+app.setApplicationName("CutieCoCo");
+// Settings stored at:
+// - macOS: ~/Library/Preferences/com.cutiecoco.CutieCoCo.plist
+// - Windows: HKEY_CURRENT_USER\Software\CutieCoCo\CutieCoCo
+// - Linux: ~/.config/CutieCoCo/CutieCoCo.conf
+```
+
+### Enum Serialization
+
+Store enums as human-readable strings or integers:
+
+```cpp
+// Store as string (readable in config files)
+QString cpuTypeToString(cutie::CpuType type) {
+    switch (type) {
+        case cutie::CpuType::MC6809: return "6809";
+        case cutie::CpuType::HD6309: return "6309";
+    }
+}
+
+// Store as integer (simple for memory sizes)
+int memorySizeToInt(cutie::MemorySize size) {
+    switch (size) {
+        case cutie::MemorySize::Mem128K: return 128;
+        case cutie::MemorySize::Mem512K: return 512;
+        // etc.
+    }
+}
+```
+
+### Recent Files Management
+
+Track recent files with a size limit:
+
+```cpp
+void AppConfig::addRecentCartridge(const QString& path) {
+    QSettings settings;
+    QStringList recent = settings.value("recentFiles/cartridges").toStringList();
+
+    recent.removeAll(path);  // Remove if exists (will re-add at front)
+    recent.prepend(path);    // Add to front
+
+    while (recent.size() > MAX_RECENT_FILES) {
+        recent.removeLast();
+    }
+
+    settings.setValue("recentFiles/cartridges", recent);
+}
+```
+
+### Window State Persistence
+
+Save and restore window geometry:
+
+```cpp
+// Save on close
+void MainWindow::closeEvent(QCloseEvent* event) {
+    AppConfig::instance().setWindowGeometry(saveGeometry());
+    AppConfig::instance().setWindowState(QMainWindow::saveState());
+    AppConfig::instance().sync();
+    QMainWindow::closeEvent(event);
+}
+
+// Restore on open
+void MainWindow::restoreWindowState() {
+    QByteArray geometry = AppConfig::instance().windowGeometry();
+    if (!geometry.isEmpty()) {
+        restoreGeometry(geometry);
+    } else {
+        adjustSize();  // Default to widget's size hint
+    }
+}
+```
+
+## Qt Settings Dialog Pattern
+
+Use a tabbed dialog for organized settings:
+
+```cpp
+SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
+    auto* tabs = new QTabWidget(this);
+    createCpuTab(tabs);      // CPU type, memory size
+    createAudioTab(tabs);    // Sample rate
+    createDisplayTab(tabs);  // Aspect ratio, scaling
+
+    auto* buttonBox = new QDialogButtonBox(
+        QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    connect(buttonBox, &QDialogButtonBox::accepted, this, &QDialog::accept);
+    connect(buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
+}
+
+void SettingsDialog::accept() {
+    saveSettings();  // Persist before closing
+    QDialog::accept();
+}
+```
+
+### ComboBox with Data
+
+Store associated values with combo items:
+
+```cpp
+// Add items with data
+m_cpuTypeCombo->addItem(tr("Motorola MC6809"), static_cast<int>(CpuType::MC6809));
+m_cpuTypeCombo->addItem(tr("Hitachi HD6309"), static_cast<int>(CpuType::HD6309));
+
+// Read current selection
+auto type = static_cast<CpuType>(m_cpuTypeCombo->currentData().toInt());
+
+// Set selection by data value
+int idx = m_cpuTypeCombo->findData(static_cast<int>(config.cpuType()));
+if (idx >= 0) m_cpuTypeCombo->setCurrentIndex(idx);
+```
+
+## Adding a New Platform
+
+When adding a new platform (e.g., macOS native):
+
+1. **Create directory structure:**
+   ```
+   platforms/newplatform/
+     CMakeLists.txt
+     include/
+     src/
+   ```
+
+2. **Implement required components:**
+   - Main entry point and window
+   - Renderer (Metal, OpenGL, or platform-specific)
+   - Audio backend (CoreAudio, WASAPI, etc.)
+   - Input handling with character-based keyboard mapping
+
+3. **Link against emulation library:**
+   ```cmake
+   target_link_libraries(myplatform PRIVATE cutie-emulation)
+   ```
+
+4. **Use CocoEmulator API:**
+   ```cpp
+   auto emulator = cutie::CocoEmulator::create(config);
+   emulator->init();
+   // Timer-driven frame loop
+   emulator->runFrame();
+   auto [pixels, size] = emulator->getFramebuffer();
+   ```
+
+5. **Update root CMakeLists.txt:**
+   ```cmake
+   option(CUTIECOCO_BUILD_NEWPLATFORM "Build new platform" OFF)
+   if(CUTIECOCO_BUILD_NEWPLATFORM)
+       add_subdirectory(platforms/newplatform)
+   endif()
+   ```
 
 ## Troubleshooting
 
