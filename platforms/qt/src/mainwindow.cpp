@@ -2,6 +2,7 @@
 #include "emulatorwidget.h"
 #include "appconfig.h"
 #include "settingsdialog.h"
+#include "aboutdialog.h"
 #include "cutie/emulator.h"
 
 #include <QMenuBar>
@@ -133,7 +134,8 @@ void MainWindow::createMenus()
     // Help menu
     QMenu *helpMenu = menuBar()->addMenu(tr("&Help"));
     helpMenu->addAction(tr("&About"), [this]() {
-        // TODO: Show about dialog
+        AboutDialog dialog(this);
+        dialog.exec();
     });
 }
 

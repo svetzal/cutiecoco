@@ -7,6 +7,7 @@ set(CUTIECOCO_QT_SOURCES
     src/qtaudiooutput.cpp
     src/appconfig.cpp
     src/settingsdialog.cpp
+    src/aboutdialog.cpp
 )
 
 set(CUTIECOCO_QT_HEADERS
@@ -15,6 +16,7 @@ set(CUTIECOCO_QT_HEADERS
     include/qtaudiooutput.h
     include/appconfig.h
     include/settingsdialog.h
+    include/aboutdialog.h
 )
 
 add_executable(cutiecoco
