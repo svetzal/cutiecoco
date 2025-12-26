@@ -2,27 +2,33 @@
 
 A cross-platform Tandy Color Computer 3 (CoCo 3) emulator built with Qt.
 
-> **Status:** Early development. The emulator boots to BASIC and accepts keyboard input, but many features are still in progress.
+> **Status:** Beta. The emulator boots to BASIC with keyboard, audio, and cartridge support. Some emulation glitches exist.
 
 ## About
 
 CutieCoCo (pronounced "Cutie CoCo", a play on Qt) is a cross-platform CoCo 3 emulator. It aims to provide accurate emulation of the Tandy Color Computer 3 on macOS, Linux, and Windows.
 
-### Features (Current)
+### Features
 
-- 128K CoCo 3 emulation
+- 128K-8192K CoCo 3 emulation
+- Motorola 6809 and Hitachi 6309 CPU support
 - Boots to Color BASIC
-- Keyboard input
+- Keyboard input with CoCo-correct key mapping
+- Joystick emulation via keyboard numpad
+- Audio output
+- Cartridge loading (.rom, .ccc, .pak files)
 - 640x480 video output via OpenGL
+- Settings persistence
+
+### Known Issues
+
+- **No disk emulation:** Floppy disk drives are not yet implemented.
+- **Cartridge auto-start:** Some cartridges may not auto-start after loading. If you see an `OK` prompt instead of the cartridge running, type `EXEC 49152` and press Enter to start it manually.
 
 ### Planned Features
 
-- Memory expansion up to 8192K
-- Hitachi 6309 CPU support
+- Native joystick/gamepad support
 - Floppy disk drive emulation
-- Audio output
-- Joystick support
-- Cartridge/pak support
 
 ## Building
 
@@ -37,10 +43,10 @@ cmake .. -DCMAKE_PREFIX_PATH="$HOME/Qt/6.10.1/macos"
 cmake --build .
 
 # Run (macOS)
-open qt/cutiecoco.app
+open platforms/qt/cutiecoco.app
 ```
 
-You will need a CoCo 3 ROM file (`coco3.rom`) placed in `build/system-roms/`.
+You will need a CoCo 3 ROM file (`coco3.rom`) placed in `shared/system-roms/`.
 
 ## Heritage and Attribution
 
