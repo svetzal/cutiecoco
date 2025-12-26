@@ -80,6 +80,7 @@ emulation/               # Platform-independent emulation library
     emulator.h           # Public CocoEmulator API
     interfaces.h         # Platform abstraction interfaces
     keyboard.h           # Keyboard matrix types and Keyboard class
+    keymapping.h         # Character-to-CoCo key translation (shared)
     framebuffer.h        # IFrameBuffer interface
     emulation.h          # EmulationThread class (legacy, still available)
     stubs.h              # Stubs for removed Windows functionality
@@ -88,6 +89,7 @@ emulation/               # Platform-independent emulation library
     cocoemu.cpp          # CocoEmulator implementation (main entry point)
     emulation.cpp        # EmulationThread implementation
     keyboard.cpp         # Keyboard matrix handling
+    keymapping.cpp       # Character-to-CoCo key translation
   # Legacy emulation files (cleaned, integrated):
   mc6809.cpp, hd6309.cpp # CPU emulation
   tcc1014*.cpp           # GIME graphics/MMU
@@ -1174,3 +1176,80 @@ Ensure the stub is in stubs.h BEFORE the file that needs it includes stubs.h. In
 #include "cutie/stubs.h"  // Second - provides stubs
 // ... other includes
 ```
+
+## Shared Platform Code
+
+When code is duplicated between platforms (Qt and Windows), extract it to the emulation library.
+
+### Character-to-CoCo Key Mapping
+
+The `cutie::mapCharToCoco()` function in `keymapping.h` translates Unicode characters to CoCo key combinations. This handles the different shift mappings between PC and CoCo keyboards:
+
+```cpp
+#include "cutie/keymapping.h"
+
+// In Qt (from QKeyEvent::text())
+auto combo = cutie::mapCharToCoco(static_cast<char32_t>(text[0].unicode()));
+
+// In Windows (from WM_CHAR)
+auto combo = cutie::mapCharToCoco(static_cast<char32_t>(wcharValue));
+
+if (combo) {
+    if (combo->withShift) {
+        keyboard.keyDown(CocoKey::Shift);
+    }
+    keyboard.keyDown(combo->key);
+}
+```
+
+**Key mappings handled:**
+- Letters: a-z (unshifted), A-Z (shifted)
+- Numbers: 0-9 (unshifted)
+- CoCo-specific shifted symbols: `"` → Shift+2, `'` → Shift+7, `*` → Shift+:, etc.
+
+## Architectural Notes
+
+### Stubs vs Interfaces
+
+The codebase has two abstraction mechanisms:
+
+1. **`stubs.h`** - Inline stub functions for legacy code compatibility
+   - Used by legacy VCC emulation files that call Windows-specific functions
+   - Provides sensible defaults (e.g., `GetMotorState()` returns 0)
+   - Gradually being replaced as code is refactored
+
+2. **`interfaces.h`** - Abstract C++ interfaces for platform abstraction
+   - `IVideoOutput`, `IAudioOutput`, `IInputProvider`, `ICartridge`
+   - Null implementations provided for testing
+   - Used by new code following dependency injection pattern
+
+**Migration strategy:** Refactor legacy code incrementally to use interfaces instead of stubs. The `CocoEmulator` class already uses a pull model where platforms call `getFramebuffer()` and `getAudioSamples()` rather than receiving callbacks.
+
+### Menu System
+
+**Qt platform:** Uses native `QMenu`/`QAction` directly. The menus are defined in `mainwindow.cpp::createMenus()`.
+
+**Windows platform:** Could potentially use the VCC menu builder from `dream-vcc/main:libcommon/ui/menu/`, but this requires:
+1. Removing Windows.h dependency from menu headers
+2. Creating platform-agnostic icon type
+3. Implementing visitor pattern for Win32 HMENU
+
+**Note:** The menu builder is most relevant when cartridge plugins need their own dynamic menus. For static application menus, native platform APIs are simpler.
+
+### Testing Infrastructure
+
+**Current state:** No test framework is set up. The project needs:
+1. CMake testing configuration (`enable_testing()`, `add_test()`)
+2. Test framework (Catch2 or GoogleTest recommended)
+3. Test executable linking against `cutie-emulation` library
+
+**CPU testing approach:** Use test vectors from known-good emulators or hardware tests to verify instruction execution. The CPU files are large (mc6809.cpp: 74KB, hd6309.cpp: 150KB) so comprehensive testing is valuable but time-consuming.
+
+### Windows Platform Status
+
+The `platforms/windows/` skeleton is in place but needs:
+- **Audio backend** (DREAM-VCC-q2i): Implement using WASAPI, XAudio2, or waveOut
+- **Gamepad support** (DREAM-VCC-8w7): Implement using XInput or DirectInput
+- **Dialogs and menus** (DREAM-VCC-u8k): Settings dialog, file dialogs
+
+These tasks require Windows testing environment to verify.
