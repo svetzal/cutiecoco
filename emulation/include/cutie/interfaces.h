@@ -18,6 +18,7 @@ This file is part of CutieCoCo.
     along with CutieCoCo.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include <cstddef>
 #include <cstdint>
 #include <span>
 
