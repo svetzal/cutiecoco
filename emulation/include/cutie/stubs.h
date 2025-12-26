@@ -4,13 +4,23 @@
 Copyright 2024-2025 CutieCoCo Contributors
 Stub implementations for removed Windows-specific functionality.
 
-These stubs allow the emulation code to compile while the full
-Qt implementations are being developed.
+This file provides:
+1. Inline no-op stubs for functionality that's not needed in the new architecture
+2. Wrappers that call through EmulationContext for functionality that IS needed
+3. Default values for legacy code that depends on removed modules
+
+The emulation uses a pull-based model where platforms call getFramebuffer() and
+getAudioSamples() to retrieve output. This is different from the original VCC
+which used push-based callbacks. Many stubs here are intentional no-ops because
+the push-based functions they replace are no longer needed.
+
+See EmulationContext for injecting platform-specific implementations.
 */
 
 #include <cstdint>
 #include <cstdio>
 #include <string>
+#include "cutie/context.h"
 
 // ============================================================================
 // Cassette stubs (was in Cassette.h)
@@ -39,8 +49,15 @@ inline uint8_t GetMem(unsigned int) { return 0; }
 // Default audio sample rate
 constexpr unsigned int AUDIO_RATE = 44100;
 
-inline int GetFreeBlockCount() { return 4; }  // Pretend we have buffer space
+// GetFreeBlockCount is used by audio stretching in coco3.cpp
+// Calls through EmulationContext to allow platform-specific implementation
+inline int GetFreeBlockCount() { return vccContextGetAudioFreeBlocks(); }
+
+// FlushAudioBuffer is a no-op in the pull-based model
+// Audio is captured via CocoEmulator::getAudioSamples() after each frame
 inline void FlushAudioBuffer(unsigned int*, unsigned int) {}
+
+// ResetAudio is a no-op - audio state is managed by the emulation core
 inline void ResetAudio() {}
 
 // Pak audio sample (from cartridge)
@@ -77,14 +94,19 @@ inline ForcedAspectData GetForcedAspectBorderPadding() {
     return ForcedAspectData{0, 0};
 }
 
-inline bool GetUseCustomSystemRom() { return false; }
-inline std::filesystem::path GetCustomSystemRomPath() { return {}; }
+// Custom system ROM configuration - delegates to EmulationContext
+inline bool GetUseCustomSystemRom() {
+    return cutie::EmulationContext::instance().useCustomSystemRom();
+}
+inline std::filesystem::path GetCustomSystemRomPath() {
+    return cutie::EmulationContext::instance().customSystemRomPath();
+}
 
 // ============================================================================
 // Windows API stubs
 // ============================================================================
 
-// MessageBox stub - just logs and returns
+// MessageBox flags - defined for compatibility with legacy code
 #ifndef MB_OK
 #define MB_OK 0
 #define MB_TASKMODAL 0
@@ -93,8 +115,10 @@ inline std::filesystem::path GetCustomSystemRomPath() { return {}; }
 #define MB_ICONERROR 0
 #endif
 
-inline int MessageBox(void*, const char* message, const char*, unsigned int) {
-    fprintf(stderr, "MessageBox: %s\n", message);
+// MessageBox calls through EmulationContext to allow platform-specific handling
+// Platforms can set a message handler via EmulationContext::setMessageHandler()
+inline int MessageBox(void*, const char* message, const char* title, unsigned int) {
+    vccContextShowMessage(message, title);
     return 0;
 }
 
@@ -188,26 +212,14 @@ extern CPUExecFuncPtr CPUExec;
 // pakinterface stubs (was in pakinterface.cpp)
 // ============================================================================
 
-// Storage for the system ROM path (set by Qt on startup)
-inline std::filesystem::path& getSystemRomPathStorage() {
-    static std::filesystem::path path;
-    return path;
-}
-
-// Set the system ROM path (called by Qt app on startup)
+// Set the system ROM path - delegates to EmulationContext
 inline void SetSystemRomPath(const std::filesystem::path& path) {
-    getSystemRomPathStorage() = path;
+    cutie::EmulationContext::instance().setSystemRomPath(path);
 }
 
-// Get the path to system ROMs directory
-// This returns the path set by Qt, or falls back to current directory
+// Get the path to system ROMs directory - delegates to EmulationContext
 inline std::filesystem::path PakGetSystemRomPath() {
-    const auto& path = getSystemRomPathStorage();
-    if (!path.empty()) {
-        return path;
-    }
-    // Fallback for development - look in current working directory
-    return std::filesystem::current_path() / "system-roms";
+    return cutie::EmulationContext::instance().systemRomPath();
 }
 
 // Cartridge functions - now implemented in cutie/cartridge.h

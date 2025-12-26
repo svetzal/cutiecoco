@@ -5,6 +5,7 @@ add_library(cutie-emulation STATIC
     src/core.cpp
     src/audio.cpp
     src/cocoemu.cpp
+    src/context.cpp
     src/emulation.cpp
     src/keyboard.cpp
     src/keymapping.cpp

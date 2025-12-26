@@ -116,6 +116,7 @@ VCC::CPUState MC6809GetState()
 	regs.DP = DP_REG;
 	regs.A = A_REG;
 	regs.B = B_REG;
+	regs.D = D_REG;  // D is the concatenation of A:B
 	regs.X = X_REG;
 	regs.Y = Y_REG;
 	regs.U = U_REG;
