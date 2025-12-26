@@ -107,6 +107,7 @@ platforms/
       emulatorwidget.h   # OpenGL display widget + emulation integration
       appconfig.h        # QSettings-based configuration
       settingsdialog.h   # Settings dialog (CPU, Audio, Display tabs)
+      aboutdialog.h      # About dialog (version, credits, license)
       qtaudiooutput.h    # QAudioSink audio backend
     src/
       main.cpp
@@ -114,6 +115,7 @@ platforms/
       emulatorwidget.cpp
       appconfig.cpp
       settingsdialog.cpp
+      aboutdialog.cpp
       qtaudiooutput.cpp
   windows/               # Windows native application
     include/
@@ -141,7 +143,8 @@ tests/                   # Unit tests (Catch2)
   CMakeLists.txt         # Test target configuration
   cpu_test_harness.h     # CPUTestHarness class
   cpu_test_harness.cpp   # Test harness implementation
-  mc6809_tests.cpp       # MC6809 CPU instruction tests
+  mc6809_tests.cpp       # MC6809 CPU instruction tests (32 tests)
+  integration_tests.cpp  # CocoEmulator API integration tests (20 tests)
 ```
 
 ### Public Emulation API
@@ -190,6 +193,36 @@ public:
 ```
 
 **Implementation:** `emulation/src/cocoemu.cpp` - Concrete `CocoEmulatorImpl` class that wraps legacy emulation code.
+
+### CocoEmulator API Gotchas
+
+**IMPORTANT:** The CocoEmulator has specific lifecycle behaviors:
+
+| Behavior | When Set | Notes |
+|----------|----------|-------|
+| `getCpuType()` | After `init()` | Returns default (MC6809) before init |
+| `getMemorySize()` | After `create()` | Available immediately from config |
+| `getFramebuffer()` | After `runFrame()` | Returns valid pointer after first frame |
+| `isReady()` | After `init()` | True only after successful init |
+
+**Framebuffer Notes:**
+- `getFramebufferInfo().pitch` is in **pixels, not bytes** (see `framebuffer.h:35`)
+- Framebuffer may be scaled: 640x480 instead of native 320x240
+- CoCo 3 native: 320x200, 320x225, 640x200, 640x225
+- Emulator output: May be 640x480 (doubled for display)
+
+**Testing pattern:**
+```cpp
+cutie::EmulatorConfig config;
+config.cpuType = cutie::CpuType::HD6309;
+config.systemRomPath = romPath;
+
+auto emulator = cutie::CocoEmulator::create(config);
+// getCpuType() is NOT reliable here!
+
+REQUIRE(emulator->init());  // Must init first
+REQUIRE(emulator->getCpuType() == cutie::CpuType::HD6309);  // Now correct
+```
 
 **`emulation/include/cutie/interfaces.h`** - Platform abstraction interfaces:
 ```cpp
@@ -1303,6 +1336,7 @@ The project uses Catch2 for unit testing, fetched via CMake FetchContent.
 ```bash
 cd build
 cmake --build . --target cpu_tests
+cmake --build . --target integration_tests
 ctest --output-on-failure
 ```
 
@@ -1313,9 +1347,55 @@ tests/
   cpu_test_harness.h      # CPUTestHarness class, CCFlag enum
   cpu_test_harness.cpp    # Test harness implementation
   mc6809_tests.cpp        # MC6809 instruction tests (32 tests)
+  integration_tests.cpp   # CocoEmulator API tests (20 tests)
 ```
 
 **Adding new tests:** Add new `*_tests.cpp` files to `tests/CMakeLists.txt`.
+
+### Integration Tests
+
+Integration tests verify the CocoEmulator public API without requiring a running emulator display.
+
+**Test categories:**
+- **Creation tests**: Memory sizes, CPU types
+- **Initialization**: Valid/invalid ROM paths
+- **Execution**: Frame running, framebuffer output
+- **Input**: Keyboard matrix, joystick axes/buttons
+- **Cartridge**: Load, eject, error handling
+- **Audio**: Sample retrieval, audio info
+- **Context**: Singleton, default interfaces
+- **Stress**: Running 600+ frames continuously
+
+**Handling missing system ROM:**
+
+Tests that require the system ROM should use `SKIP()` when the ROM isn't found:
+
+```cpp
+static fs::path findSystemRomPath() {
+    std::vector<fs::path> candidates = {
+        "system-roms",
+        "../system-roms",
+        "../../shared/system-roms",
+    };
+    for (const auto& dir : candidates) {
+        if (fs::exists(dir / "coco3.rom")) return dir;
+    }
+    return "";  // Not found
+}
+
+TEST_CASE("Some ROM-dependent test") {
+    auto romPath = findSystemRomPath();
+    if (romPath.empty()) {
+        SKIP("System ROM not found");
+    }
+    // ... rest of test
+}
+```
+
+**Why SKIP instead of REQUIRE:**
+- CI environments may not have the ROM
+- Tests should still pass when ROM is absent
+- Provides visibility into which tests were skipped
 
 ### CPU Testing Notes
 
