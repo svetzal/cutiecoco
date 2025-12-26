@@ -5,12 +5,16 @@ set(CUTIECOCO_QT_SOURCES
     src/mainwindow.cpp
     src/emulatorwidget.cpp
     src/qtaudiooutput.cpp
+    src/appconfig.cpp
+    src/settingsdialog.cpp
 )
 
 set(CUTIECOCO_QT_HEADERS
     include/mainwindow.h
     include/emulatorwidget.h
     include/qtaudiooutput.h
+    include/appconfig.h
+    include/settingsdialog.h
 )
 
 add_executable(cutiecoco
