@@ -25,12 +25,13 @@ The `qt` branch contains the cross-platform port. Key changes:
 - All legacy emulation files cleaned and integrated
 - Keyboard input with character-based mapping
 - Audio output via Qt using QAudioSink (`platforms/qt/src/qtaudiooutput.cpp`)
+- Joystick input via keyboard numpad emulation
+- Cartridge loading (.rom, .ccc, .pak files) with auto-start support
 
 **What Remains:**
-- Joystick input (task: DREAM-VCC-j2o)
 - Settings dialogs (task: DREAM-VCC-wfo)
 - Configuration system (task: DREAM-VCC-cc9)
-- Clean pakinterface.cpp for cartridge support
+- Native joystick/gamepad support (currently keyboard numpad only)
 
 ## Issue Tracking
 
@@ -646,6 +647,42 @@ The audio system collects samples into a fixed-size buffer (`AudioBuffer[16384]`
 3. Eventually writes past buffer end → crash
 
 **Solution:** Call `SetAudioRate(0)` to disable audio collection until a Qt audio backend is implemented.
+
+### Reset Sequence
+
+**CRITICAL:** The `reset()` function must mirror the init sequence for audio timing. `MiscReset()` clears audio timing variables to 0, which causes the CPU timing loop to freeze if not followed by `SetAudioRate()`.
+
+```cpp
+void reset() {
+    // Reset hardware
+    GimeReset();
+    mc6883_reset();
+
+    // Reset CPU
+    MC6809Reset();  // or HD6309Reset()
+
+    // Reset misc - CLEARS AUDIO TIMING TO 0!
+    MiscReset();
+
+    // MUST restore audio timing after MiscReset!
+    if (audioSampleRate > 0) {
+        SetAudioRate(audioSampleRate);
+    }
+}
+```
+
+**Why this matters:** `MiscReset()` sets `SoundInterupt = 0` and `NanosToSoundSample = 0`. The CPU timing loop in `CPUCycle()` uses these values:
+
+```cpp
+while (NanosThisLine >= 1) {
+    // Case 2: Audio sampling
+    NanosThisLine -= NanosToSoundSample;  // If 0, never decreases!
+    NanosToSoundSample = SoundInterupt;   // Stays 0!
+    // Loop runs forever...
+}
+```
+
+If `NanosToSoundSample` is 0, subtracting it doesn't change `NanosThisLine`, causing an infinite loop that freezes the emulator.
 
 ## CoCo Keyboard Emulation
 
