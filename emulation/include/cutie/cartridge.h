@@ -116,7 +116,7 @@ private:
     // Error message
     std::string m_lastError;
 
-    mutable std::mutex m_mutex;
+    mutable std::recursive_mutex m_mutex;
 
     // Calculate offset into ROM based on address and bank
     size_t calculateOffset(uint16_t address) const;

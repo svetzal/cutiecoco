@@ -146,8 +146,15 @@ public:
             MC6809Reset();
         }
 
-        // Reset misc
+        // Reset misc (timers, interrupts, etc.)
+        // IMPORTANT: Must call SetAudioRate after MiscReset because MiscReset
+        // resets audio timing variables to 0, which causes infinite loop in CPUCycle
         MiscReset();
+
+        // Restore audio rate after MiscReset
+        if (m_config.audioSampleRate > 0) {
+            SetAudioRate(m_config.audioSampleRate);
+        }
     }
 
     void shutdown() override {

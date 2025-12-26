@@ -29,7 +29,7 @@ CartridgeManager::CartridgeManager()
 
 bool CartridgeManager::load(const std::filesystem::path& path)
 {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     // Check if file exists
     if (!std::filesystem::exists(path)) {
@@ -84,7 +84,7 @@ bool CartridgeManager::load(const std::filesystem::path& path)
 
 void CartridgeManager::eject()
 {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     m_rom.clear();
     m_name.clear();
     m_bankSelect = 0;
@@ -96,13 +96,13 @@ void CartridgeManager::eject()
 
 bool CartridgeManager::hasCartridge() const
 {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     return !m_rom.empty();
 }
 
 std::string CartridgeManager::getName() const
 {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     return m_name;
 }
 
@@ -132,7 +132,7 @@ size_t CartridgeManager::calculateOffset(uint16_t address) const
 
 uint8_t CartridgeManager::read(uint16_t address) const
 {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     if (m_rom.empty()) {
         return 0xFF;  // No cartridge - open bus
@@ -158,7 +158,7 @@ uint8_t CartridgeManager::read(uint16_t address) const
 
 void CartridgeManager::writePort(uint8_t port, uint8_t value)
 {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     // Bank switching is typically done via port $FF40
     // Different ROMs use different bank switching schemes
@@ -170,7 +170,7 @@ void CartridgeManager::writePort(uint8_t port, uint8_t value)
 
 uint8_t CartridgeManager::readPort(uint8_t port) const
 {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     // Most cartridges return 0xFF for port reads
     (void)port;
@@ -179,13 +179,13 @@ uint8_t CartridgeManager::readPort(uint8_t port) const
 
 void CartridgeManager::reset()
 {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     m_bankSelect = 0;
 }
 
 std::string CartridgeManager::getLastError() const
 {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     return m_lastError;
 }
 

@@ -52,6 +52,12 @@ void MainWindow::createMenus()
 
     // Cartridge submenu
     fileMenu->addAction(tr("&Insert Cartridge..."), [this]() {
+        // Pause emulation while loading
+        bool wasPaused = m_emulatorWidget->isEmulationPaused();
+        if (!wasPaused) {
+            m_emulatorWidget->pauseEmulation();
+        }
+
         QString fileName = QFileDialog::getOpenFileName(
             this,
             tr("Insert Cartridge"),
@@ -71,6 +77,11 @@ void MainWindow::createMenus()
                             QString::fromStdString(emu->getLastError())));
                 }
             }
+        }
+
+        // Resume emulation if it wasn't paused before
+        if (!wasPaused) {
+            m_emulatorWidget->resumeEmulation();
         }
     });
 
