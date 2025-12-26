@@ -6,58 +6,6 @@
 namespace cutie {
 namespace win32 {
 
-std::optional<CocoKeyCombo> mapCharToCoco(wchar_t ch)
-{
-    using K = CocoKey;
-
-    // Lowercase letters -> just the letter key
-    if (ch >= L'a' && ch <= L'z') {
-        return CocoKeyCombo{static_cast<K>(static_cast<int>(K::A) + (ch - L'a')), false};
-    }
-
-    // Uppercase letters -> letter key + shift
-    if (ch >= L'A' && ch <= L'Z') {
-        return CocoKeyCombo{static_cast<K>(static_cast<int>(K::A) + (ch - L'A')), true};
-    }
-
-    // Numbers
-    if (ch >= L'0' && ch <= L'9') {
-        return CocoKeyCombo{static_cast<K>(static_cast<int>(K::Key0) + (ch - L'0')), false};
-    }
-
-    // CoCo shifted number keys produce different symbols than PC
-    switch (ch) {
-        // Basic punctuation (unshifted on CoCo)
-        case L'@': return CocoKeyCombo{K::At, false};
-        case L':': return CocoKeyCombo{K::Colon, false};
-        case L';': return CocoKeyCombo{K::Semicolon, false};
-        case L',': return CocoKeyCombo{K::Comma, false};
-        case L'-': return CocoKeyCombo{K::Minus, false};
-        case L'.': return CocoKeyCombo{K::Period, false};
-        case L'/': return CocoKeyCombo{K::Slash, false};
-        case L' ': return CocoKeyCombo{K::Space, false};
-
-        // Shifted punctuation on CoCo
-        case L'!': return CocoKeyCombo{K::Key1, true};   // Shift+1
-        case L'"': return CocoKeyCombo{K::Key2, true};   // Shift+2
-        case L'#': return CocoKeyCombo{K::Key3, true};   // Shift+3
-        case L'$': return CocoKeyCombo{K::Key4, true};   // Shift+4
-        case L'%': return CocoKeyCombo{K::Key5, true};   // Shift+5
-        case L'&': return CocoKeyCombo{K::Key6, true};   // Shift+6
-        case L'\'': return CocoKeyCombo{K::Key7, true};  // Shift+7 (apostrophe)
-        case L'(': return CocoKeyCombo{K::Key8, true};   // Shift+8
-        case L')': return CocoKeyCombo{K::Key9, true};   // Shift+9
-        case L'*': return CocoKeyCombo{K::Colon, true};  // Shift+:
-        case L'+': return CocoKeyCombo{K::Semicolon, true}; // Shift+;
-        case L'<': return CocoKeyCombo{K::Comma, true};  // Shift+,
-        case L'=': return CocoKeyCombo{K::Minus, true};  // Shift+-
-        case L'>': return CocoKeyCombo{K::Period, true}; // Shift+.
-        case L'?': return CocoKeyCombo{K::Slash, true};  // Shift+/
-
-        default: return std::nullopt;
-    }
-}
-
 std::optional<CocoKey> mapVKToCoco(WPARAM vkCode)
 {
     using K = CocoKey;
@@ -187,7 +135,8 @@ bool Win32Input::handleKeyUp(WPARAM vkCode, LPARAM /*flags*/)
 
 void Win32Input::handleChar(wchar_t ch)
 {
-    auto combo = mapCharToCoco(ch);
+    // Use shared character-to-CoCo mapping from emulation library
+    auto combo = cutie::mapCharToCoco(static_cast<char32_t>(ch));
     if (!combo) {
         return;  // Unmapped character
     }

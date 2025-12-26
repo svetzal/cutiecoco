@@ -2,6 +2,7 @@
 #include "qtaudiooutput.h"
 #include "cutie/emulator.h"
 #include "cutie/keyboard.h"
+#include "cutie/keymapping.h"
 #include "cutie/joystick.h"
 
 #include <QKeyEvent>
@@ -14,67 +15,6 @@
 namespace {
     // CoCo 3 aspect ratio (640x480 = 4:3)
     constexpr float ASPECT_RATIO = 4.0f / 3.0f;
-
-    // A CoCo key combination (primary key + optional shift)
-    struct CocoKeyCombo {
-        cutie::CocoKey key;
-        bool withShift;
-    };
-
-    // Map printable characters to CoCo key combinations
-    // This handles the translation between PC keyboard layout and CoCo layout
-    // For example: PC " (Shift+') -> CoCo Shift+2
-    std::optional<CocoKeyCombo> mapCharToCoco(QChar ch)
-    {
-        using K = cutie::CocoKey;
-
-        // Lowercase letters -> just the letter key
-        if (ch >= 'a' && ch <= 'z') {
-            return CocoKeyCombo{static_cast<K>(static_cast<int>(K::A) + (ch.unicode() - 'a')), false};
-        }
-
-        // Uppercase letters -> letter key + shift
-        if (ch >= 'A' && ch <= 'Z') {
-            return CocoKeyCombo{static_cast<K>(static_cast<int>(K::A) + (ch.unicode() - 'A')), true};
-        }
-
-        // Numbers
-        if (ch >= '0' && ch <= '9') {
-            return CocoKeyCombo{static_cast<K>(static_cast<int>(K::Key0) + (ch.unicode() - '0')), false};
-        }
-
-        // CoCo shifted number keys produce different symbols than PC
-        switch (ch.unicode()) {
-            // Basic punctuation (unshifted on CoCo)
-            case '@': return CocoKeyCombo{K::At, false};
-            case ':': return CocoKeyCombo{K::Colon, false};
-            case ';': return CocoKeyCombo{K::Semicolon, false};
-            case ',': return CocoKeyCombo{K::Comma, false};
-            case '-': return CocoKeyCombo{K::Minus, false};
-            case '.': return CocoKeyCombo{K::Period, false};
-            case '/': return CocoKeyCombo{K::Slash, false};
-            case ' ': return CocoKeyCombo{K::Space, false};
-
-            // Shifted punctuation on CoCo
-            case '!': return CocoKeyCombo{K::Key1, true};   // Shift+1
-            case '"': return CocoKeyCombo{K::Key2, true};   // Shift+2
-            case '#': return CocoKeyCombo{K::Key3, true};   // Shift+3
-            case '$': return CocoKeyCombo{K::Key4, true};   // Shift+4
-            case '%': return CocoKeyCombo{K::Key5, true};   // Shift+5
-            case '&': return CocoKeyCombo{K::Key6, true};   // Shift+6
-            case '\'': return CocoKeyCombo{K::Key7, true};  // Shift+7 (apostrophe)
-            case '(': return CocoKeyCombo{K::Key8, true};   // Shift+8
-            case ')': return CocoKeyCombo{K::Key9, true};   // Shift+9
-            case '*': return CocoKeyCombo{K::Colon, true};  // Shift+:
-            case '+': return CocoKeyCombo{K::Semicolon, true}; // Shift+;
-            case '<': return CocoKeyCombo{K::Comma, true};  // Shift+,
-            case '=': return CocoKeyCombo{K::Minus, true};  // Shift+-
-            case '>': return CocoKeyCombo{K::Period, true}; // Shift+.
-            case '?': return CocoKeyCombo{K::Slash, true};  // Shift+/
-
-            default: return std::nullopt;
-        }
-    }
 
     // Map Qt key codes to CoCo keys for non-printable keys
     // (arrows, function keys, modifiers, etc.)
@@ -589,7 +529,7 @@ void EmulatorWidget::keyPressEvent(QKeyEvent *event)
     // Try character-based mapping for printable characters
     QString text = event->text();
     if (!text.isEmpty()) {
-        auto combo = mapCharToCoco(text[0]);
+        auto combo = cutie::mapCharToCoco(static_cast<char32_t>(text[0].unicode()));
         if (combo) {
             // Track what we're pressing so we can release it properly
             ActiveKeyInfo info;

@@ -6,6 +6,7 @@
 #include <windows.h>
 
 #include "cutie/keyboard.h"
+#include "cutie/keymapping.h"
 #include "cutie/joystick.h"
 
 #include <optional>
@@ -15,15 +16,6 @@ namespace cutie {
 class CocoEmulator;
 
 namespace win32 {
-
-// Key combination for CoCo keyboard (key + optional shift)
-struct CocoKeyCombo {
-    CocoKey key;
-    bool withShift;
-};
-
-// Map a Windows character (from WM_CHAR) to CoCo key combination
-std::optional<CocoKeyCombo> mapCharToCoco(wchar_t ch);
 
 // Map a Windows virtual key code to CoCo key for non-printable keys
 std::optional<CocoKey> mapVKToCoco(WPARAM vkCode);
