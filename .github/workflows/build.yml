@@ -39,7 +39,7 @@ jobs:
         with:
           version: ${{ env.QT_VERSION }}
           cache: true
-          modules: 'qtimageformats'
+          modules: 'qtimageformats qtmultimedia'
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
@@ -69,7 +69,7 @@ jobs:
 
           # Bundle the system ROM
           mkdir -p "$APP_PATH/Contents/Resources/system-roms"
-          cp system-roms/coco3.rom "$APP_PATH/Contents/Resources/system-roms/"
+          cp shared/system-roms/coco3.rom "$APP_PATH/Contents/Resources/system-roms/"
 
           echo "Framework and ROM bundling complete"
           ls -la "$APP_PATH/Contents/Frameworks/QtCore.framework/"
@@ -185,7 +185,7 @@ jobs:
           cp build/platforms/qt/cutiecoco AppDir/usr/bin/
 
           # Copy system ROM (next to executable)
-          cp system-roms/coco3.rom AppDir/usr/bin/system-roms/
+          cp shared/system-roms/coco3.rom AppDir/usr/bin/system-roms/
 
           # Copy desktop file
           cp platforms/qt/cutiecoco.desktop AppDir/usr/share/applications/
@@ -214,7 +214,7 @@ jobs:
           mkdir package/system-roms
           copy cutiecoco.exe package/
           # Copy system ROM
-          copy ../../../../system-roms/coco3.rom package/system-roms/
+          copy ../../../../shared/system-roms/coco3.rom package/system-roms/
           # Use windeployqt to bundle Qt DLLs
           windeployqt --release --no-translations package/cutiecoco.exe
           Compress-Archive -Path package/* -DestinationPath ../cutiecoco-windows.zip
